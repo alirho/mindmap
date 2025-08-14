@@ -1,0 +1,199 @@
+:root {
+    --bg-color: #ffffff;
+    --text-color: #1e293b;
+    --node-bg: #f1f5f9;
+    --node-border: transparent;
+    --node-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --selected-border: #3b82f6;
+    --selected-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --connector-stroke: #94a3b8;
+    --button-bg: #2563eb;
+    --button-text: #ffffff;
+    --button-disabled-bg: #94a3b8;
+    --info-bg: rgba(241, 245, 249, 0.8);
+    --info-border: #e2e8f0;
+    --info-text: #334155;
+    --delete-btn-bg: #ef4444;
+    --delete-btn-hover-bg: #dc2626;
+}
+
+body {
+    font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    user-select: none;
+}
+
+#mindmap-canvas {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#mindmap-svg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.connector-line {
+    stroke: var(--connector-stroke);
+    stroke-width: 2px;
+    fill: none;
+}
+
+#mindmap-nodes-layer {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.mindmap-node {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    min-height: 15px;
+    padding: 1rem;
+    background-color: var(--node-bg);
+    border: 2px solid var(--node-border);
+    border-radius: 0.5rem;
+    box-shadow: var(--node-shadow);
+    cursor: pointer;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+    transform: translate(-50%, -50%);
+}
+
+.mindmap-node:hover {
+    border-color: #93c5fd;
+}
+
+.mindmap-node.selected {
+    border-color: var(--selected-border);
+    box-shadow: var(--selected-shadow);
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+.mindmap-node .node-text {
+    padding: 0 0.5rem;
+    text-align: center;
+}
+
+.mindmap-node .node-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    text-align: center;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    outline: none;
+    padding: 0 0.5rem;
+}
+
+.delete-btn {
+    position: absolute;
+    top: -0.5rem;
+    right: -0.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    background-color: var(--delete-btn-bg);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    z-index: 10;
+}
+
+.delete-btn:hover {
+    background-color: var(--delete-btn-hover-bg);
+}
+
+#toolbar {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 20;
+    background-color: var(--info-bg);
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    border: 1px solid var(--info-border);
+}
+
+#add-node-btn {
+    padding: 0.5rem 1rem;
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    font-family: inherit;
+    font-weight: 600;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#add-node-btn:hover {
+    background-color: #1d4ed8;
+}
+
+#add-node-btn:disabled {
+    background-color: var(--button-disabled-bg);
+    cursor: not-allowed;
+}
+
+#instructions {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    z-index: 20;
+    padding: 0.75rem;
+    background-color: var(--info-bg);
+    border-radius: 0.5rem;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    border: 1px solid var(--info-border);
+    font-size: 0.875rem;
+    color: var(--info-text);
+}
+
+#instructions p {
+    margin: 0;
+}
+
+#instructions ul {
+    margin: 0.25rem 0 0;
+    padding-right: 1.25rem;
+    list-style-type: none;
+}
+
+#instructions li {
+    margin-bottom: 0.25rem;
+}
+
+#instructions code {
+    background-color: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 600;
+}

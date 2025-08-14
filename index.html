@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اپلیکیشن نقشه ذهنی</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="mindmap-canvas">
+        <svg id="mindmap-svg-layer"></svg>
+        <div id="mindmap-nodes-layer"></div>
+    </div>
+
+    <div id="toolbar">
+        <button id="add-node-btn">افزودن شاخه</button>
+    </div>
+
+    <div id="instructions">
+        <p><strong>راهنما:</strong></p>
+        <ul>
+            <li><strong>انتخاب گره:</strong> کلیک</li>
+            <li><strong>ویرایش متن:</strong> دابل کلیک یا کلید <code>F2</code></li>
+            <li><strong>افزودن شاخه:</strong> کلید <code>Tab</code></li>
+            <li><strong>حذف گره:</strong> کلید <code>Delete</code></li>
+            <li><strong>جابجایی:</strong> کشیدن و رها کردن</li>
+        </ul>
+    </div>
+
+    <script src="script.js" type="module"></script>
+</body>
+</html>
