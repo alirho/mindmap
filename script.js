@@ -73,22 +73,24 @@ class MindMap {
 
     createNode(text, parentId, position) {
         const id = parentId === null ? ROOT_NODE_ID : `node_${Date.now()}`;
-        const nodeEl = this.renderNodeDOM(id, text, position);
-
+        
         this.nodes[id] = {
             id,
             text,
             parentId,
             childrenIds: [],
             position,
-            element: nodeEl
+            element: null, // Will be set by renderNodeDOM
+            isCollapsed: false,
         };
+        
+        const nodeEl = this.renderNodeDOM(id, text, position);
+        this.nodes[id].element = nodeEl;
 
         if (parentId && this.nodes[parentId]) {
             this.nodes[parentId].childrenIds.push(id);
         }
 
-        this.updateAllConnectors();
         return id;
     }
 
@@ -115,7 +117,7 @@ class MindMap {
             this.selectNode(nodeToDelete.parentId || null);
         }
 
-        this.updateAllConnectors();
+        this.updateUIVisibilityAndConnectors();
     }
     
     addNode() {
@@ -158,6 +160,26 @@ class MindMap {
         
         const newNodeId = this.createNode('شاخه جدید', this.selectedNodeId, newPosition);
         this.selectNode(newNodeId);
+        this.updateUIVisibilityAndConnectors();
+    }
+    
+    toggleCollapse(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node || node.childrenIds.length === 0) {
+            return;
+        }
+
+        node.isCollapsed = !node.isCollapsed;
+
+        // If collapsing, and the selected node is a descendant, select the collapsing node.
+        if (node.isCollapsed) {
+            const descendantIds = this.getAllDescendantIds(nodeId);
+            if (descendantIds.includes(this.selectedNodeId)) {
+                this.selectNode(nodeId);
+            }
+        }
+
+        this.updateUIVisibilityAndConnectors();
     }
     
     // --- UI and Rendering ---
@@ -176,18 +198,18 @@ class MindMap {
 
         nodeEl.addEventListener('mousedown', (e) => { e.stopPropagation(); this.handleDragStart(e, nodeId); });
         nodeEl.addEventListener('dblclick', (e) => { e.stopPropagation(); this.makeNodeEditable(nodeId); });
-        // Use click for selection to differentiate from drag start
         nodeEl.addEventListener('click', (e) => { e.stopPropagation(); this.selectNode(nodeId); });
 
-
-        if (nodeId !== ROOT_NODE_ID) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'delete-btn';
-            deleteBtn.innerHTML = '&times;';
-            deleteBtn.setAttribute('aria-label', 'حذف گره');
-            deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteNode(nodeId); });
-            nodeEl.appendChild(deleteBtn);
-        }
+        // Add collapse button
+        const collapseBtn = document.createElement('button');
+        collapseBtn.className = 'collapse-btn';
+        collapseBtn.setAttribute('aria-label', 'جمع/باز کردن گره');
+        collapseBtn.style.display = 'none'; // Initially hidden, shown by updateUIVisibility
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleCollapse(nodeId);
+        });
+        nodeEl.appendChild(collapseBtn);
 
         this.nodesLayer.appendChild(nodeEl);
         return nodeEl;
@@ -203,6 +225,11 @@ class MindMap {
     }
     
     selectNode(nodeId) {
+        // Prevent selection of a hidden node
+        if(nodeId && this.isAnyAncestorCollapsed(nodeId)) {
+            return;
+        }
+
         if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
             this.nodes[this.selectedNodeId].element.classList.remove('selected');
         }
@@ -260,12 +287,53 @@ class MindMap {
         input.select();
     }
 
-    // --- Connectors ---
+    // --- Connectors and Visibility ---
 
-    updateAllConnectors() {
-        this.svgLayer.innerHTML = '';
+    updateUIVisibilityAndConnectors() {
+        this.svgLayer.innerHTML = ''; // Clear all connectors
+
         Object.values(this.nodes).forEach(node => {
-            if (node.parentId && this.nodes[node.parentId]) {
+            // 1. Update collapse button state and position
+            const collapseBtn = node.element.querySelector('.collapse-btn');
+            if (collapseBtn) {
+                if (node.childrenIds.length > 0) {
+                    collapseBtn.style.display = 'flex';
+                    collapseBtn.textContent = node.isCollapsed ? '+' : '−';
+
+                    const childPositionsX = node.childrenIds.map(id => this.nodes[id].position.x);
+                    const allToTheRight = childPositionsX.every(x => x > node.position.x);
+                    const allToTheLeft = childPositionsX.every(x => x < node.position.x);
+                    
+                    // Reset styles
+                    Object.assign(collapseBtn.style, {
+                        left: '', right: '', top: '', bottom: '', transform: ''
+                    });
+
+                    if (allToTheRight) {
+                        collapseBtn.style.right = '-0.75rem';
+                        collapseBtn.style.top = '50%';
+                        collapseBtn.style.transform = 'translateY(-50%)';
+                    } else if (allToTheLeft) {
+                        collapseBtn.style.left = '-0.75rem';
+                        collapseBtn.style.top = '50%';
+                        collapseBtn.style.transform = 'translateY(-50%)';
+                    } else {
+                        // Default to bottom-center for mixed/vertical children (e.g., on root)
+                        collapseBtn.style.left = '50%';
+                        collapseBtn.style.bottom = '-0.75rem';
+                        collapseBtn.style.transform = 'translateX(-50%)';
+                    }
+                } else {
+                    collapseBtn.style.display = 'none';
+                }
+            }
+
+            // 2. Update node visibility
+            const isVisible = !this.isAnyAncestorCollapsed(node.id);
+            node.element.style.display = isVisible ? 'flex' : 'none';
+
+            // 3. Draw connector if visible and has a parent
+            if (isVisible && node.parentId && this.nodes[node.parentId]) {
                 this.drawConnector(this.nodes[node.parentId].position, node.position);
             }
         });
@@ -369,7 +437,7 @@ class MindMap {
                 this.updateNodePosition(id, newPosition);
             }
         });
-        this.updateAllConnectors();
+        this.updateUIVisibilityAndConnectors();
     }
     
     // --- Keyboard Shortcuts ---
@@ -403,6 +471,18 @@ class MindMap {
             return [];
         }
         return node.childrenIds.flatMap(childId => [childId, ...this.getAllDescendantIds(childId)]);
+    }
+
+    isAnyAncestorCollapsed(nodeId) {
+        let currentId = this.nodes[nodeId]?.parentId;
+        while (currentId) {
+            const currentNode = this.nodes[currentId];
+            if (currentNode.isCollapsed) {
+                return true;
+            }
+            currentId = currentNode.parentId;
+        }
+        return false;
     }
 }
 

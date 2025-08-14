@@ -13,8 +13,8 @@
     --info-bg: rgba(241, 245, 249, 0.8);
     --info-border: #e2e8f0;
     --info-text: #334155;
-    --delete-btn-bg: #ef4444;
-    --delete-btn-hover-bg: #dc2626;
+    --collapse-btn-bg: #3b82f6;
+    --collapse-btn-hover-bg: #2563eb;
 }
 
 body {
@@ -109,28 +109,29 @@ body {
     padding: 0 0.5rem;
 }
 
-.delete-btn {
+.collapse-btn {
     position: absolute;
-    top: -0.5rem;
-    right: -0.5rem;
     width: 1.5rem;
     height: 1.5rem;
-    background-color: var(--delete-btn-bg);
+    background-color: var(--collapse-btn-bg);
     color: white;
-    border: none;
+    border: 2px solid var(--bg-color);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
+    font-size: 1.2rem;
+    line-height: 1;
     font-weight: bold;
     cursor: pointer;
     transition: background-color 0.2s;
-    z-index: 10;
+    z-index: 5;
+    padding: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
-.delete-btn:hover {
-    background-color: var(--delete-btn-hover-bg);
+.collapse-btn:hover {
+    background-color: var(--collapse-btn-hover-bg);
 }
 
 #toolbar {
