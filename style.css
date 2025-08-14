@@ -8,6 +8,7 @@
     --selected-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     --connector-stroke: #94a3b8;
     --button-bg: #2563eb;
+    --button-active-bg: #1d4ed8;
     --button-text: #ffffff;
     --button-disabled-bg: #94a3b8;
     --info-bg: rgba(241, 245, 249, 0.8);
@@ -76,23 +77,55 @@ body {
     min-width: 40px;
     min-height: 15px;
     padding: 1rem;
-    background-color: var(--node-bg);
     border: 2px solid var(--node-border);
-    border-radius: 0.5rem;
-    box-shadow: var(--node-shadow);
     cursor: pointer;
-    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.2s;
     transform: translate(-50%, -50%);
 }
 
-.mindmap-node:hover {
+.mindmap-node.node-style-rect {
+    background-color: var(--node-bg);
+    border-radius: 0.5rem;
+    box-shadow: var(--node-shadow);
+}
+
+.mindmap-node.node-style-ellipse {
+    background-color: var(--node-bg);
+    border-radius: 999px; /* Pill shape */
+    box-shadow: var(--node-shadow);
+    padding: 0.8rem 1.5rem;
+}
+
+.mindmap-node.node-style-underline {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-bottom: 2px solid var(--connector-stroke);
+    border-radius: 0;
+    padding-top: 1rem;
+    padding-bottom: 0.5rem;
+}
+
+.mindmap-node.node-style-none {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+
+.mindmap-node:not(.node-style-underline):not(.node-style-none):hover {
     border-color: #93c5fd;
 }
 
 .mindmap-node.selected {
+    transform: translate(-50%, -50%) scale(1.05);
+}
+.mindmap-node.selected:not(.node-style-underline):not(.node-style-none) {
     border-color: var(--selected-border);
     box-shadow: var(--selected-shadow);
-    transform: translate(-50%, -50%) scale(1.05);
+}
+.mindmap-node.selected.node-style-underline {
+    border-bottom-color: var(--selected-border);
 }
 
 .mindmap-node .node-text {
@@ -153,6 +186,11 @@ body {
     border: 1px solid var(--info-border);
 }
 
+.toolbar-group {
+    display: flex;
+    gap: 0.25rem;
+}
+
 #toolbar button {
     width: 40px;
     height: 40px;
@@ -165,7 +203,7 @@ body {
     border: none;
     border-radius: 50%;
     cursor: pointer;
-    transition: background-color 0.2s, transform 0.1s ease;
+    transition: background-color 0.2s, transform 0.1s ease, box-shadow 0.2s;
 }
 
 #toolbar button:hover {
@@ -176,10 +214,16 @@ body {
     transform: scale(0.95);
 }
 
+#toolbar button.active {
+    background-color: var(--button-active-bg);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+}
+
 #toolbar button:disabled {
     background-color: var(--button-disabled-bg);
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
 }
 
 #toolbar button svg {

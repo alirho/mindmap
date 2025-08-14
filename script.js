@@ -93,6 +93,10 @@ class MindMap {
         this.panelToggleBtn = document.getElementById('panel-toggle-btn');
         this.savedMapsList = document.getElementById('saved-maps-list');
         
+        // Style Buttons
+        this.nodeStyleButtons = document.querySelectorAll('.node-style-btn');
+        this.connectorStyleButtons = document.querySelectorAll('.connector-style-btn');
+
         // Instructions Panel
         this.instructionsPanel = document.getElementById('instructions');
         this.closeInstructionsBtn = document.getElementById('close-instructions-btn');
@@ -119,6 +123,7 @@ class MindMap {
         this.pan = { x: 0, y: 0 };
         this.currentMapId = null;
         this.db = new MindMapDB();
+        this.connectorStyle = 'straight';
 
         this.dragState = { isDraggingNode: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
         this.panState = { isPanning: false, lastMousePos: { x: 0, y: 0 } };
@@ -166,10 +171,15 @@ class MindMap {
                 parentId: node.parentId,
                 childrenIds: [...node.childrenIds],
                 position: { ...node.position },
-                isCollapsed: node.isCollapsed
+                isCollapsed: node.isCollapsed,
+                style: node.style || 'rect',
             };
         }
-        return { nodes: serializableNodes, selectedNodeId: this.selectedNodeId };
+        return { 
+            nodes: serializableNodes, 
+            selectedNodeId: this.selectedNodeId,
+            connectorStyle: this.connectorStyle 
+        };
     }
     
     pushHistoryState(stateBeforeAction) {
@@ -187,10 +197,11 @@ class MindMap {
             newNodes[id] = { ...state.nodes[id], element: null };
         }
         this.nodes = newNodes;
+        this.connectorStyle = state.connectorStyle || 'straight';
 
         for (const id in this.nodes) {
             const nodeData = this.nodes[id];
-            const nodeEl = this.renderNodeDOM(nodeData.id, nodeData.text, nodeData.position);
+            const nodeEl = this.renderNodeDOM(nodeData.id, nodeData.text, nodeData.position, nodeData.style);
             nodeData.element = nodeEl;
         }
 
@@ -201,6 +212,7 @@ class MindMap {
             this.selectNode(null);
         }
         this.updateMarkdownEditor();
+        this.updateActiveConnectorStyleButton(this.connectorStyle);
     }
 
     undo() {
@@ -229,10 +241,10 @@ class MindMap {
 
     // --- Core Node Management ---
 
-    createNode(text, parentId, position) {
+    createNode(text, parentId, position, style = 'rect') {
         const id = parentId === null ? ROOT_NODE_ID : `node_${Date.now()}_${Math.random()}`;
-        this.nodes[id] = { id, text, parentId, childrenIds: [], position, element: null, isCollapsed: false };
-        const nodeEl = this.renderNodeDOM(id, text, position);
+        this.nodes[id] = { id, text, parentId, childrenIds: [], position, element: null, isCollapsed: false, style };
+        const nodeEl = this.renderNodeDOM(id, text, position, style);
         this.nodes[id].element = nodeEl;
         if (parentId && this.nodes[parentId]) {
             this.nodes[parentId].childrenIds.push(id);
@@ -240,7 +252,7 @@ class MindMap {
         return id;
     }
 
-    programmaticAddNode(parentId, text) {
+    programmaticAddNode(parentId, text, style = 'rect') {
         if (!parentId || !this.nodes[parentId]) return null;
         const parentNode = this.nodes[parentId];
         
@@ -264,7 +276,7 @@ class MindMap {
             const offsetY = (childCount % 2 === 0 ? 1 : -1) * (Math.floor(childCount / 2) * siblingOffsetY + baseOffsetY);
             newPosition = { x: parentNode.position.x + (direction * offsetX), y: parentNode.position.y + offsetY };
         }
-        return this.createNode(text, parentId, newPosition);
+        return this.createNode(text, parentId, newPosition, style);
     }
     
     addNodeForSelected() {
@@ -344,7 +356,8 @@ class MindMap {
                 id: this.currentMapId,
                 name: mapName,
                 markdown,
-                modifiedAt: new Date()
+                modifiedAt: new Date(),
+                connectorStyle: this.connectorStyle
             };
             await this.db.put(mapData);
         } else {
@@ -354,7 +367,8 @@ class MindMap {
                 name: mapName,
                 markdown,
                 createdAt: new Date(), // Set createdAt on creation
-                modifiedAt: new Date()
+                modifiedAt: new Date(),
+                connectorStyle: this.connectorStyle
             };
             const newId = await this.db.add(mapData);
             this.currentMapId = newId;
@@ -376,6 +390,8 @@ class MindMap {
         this.clearCanvas();
         this.importFromMarkdown(map.markdown);
         this.currentMapId = map.id;
+        this.connectorStyle = map.connectorStyle || 'straight';
+        this.updateActiveConnectorStyleButton(this.connectorStyle);
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
@@ -441,7 +457,11 @@ class MindMap {
             const node = this.nodes[nodeId];
             if (!node) return '';
             const indent = '  '.repeat(depth);
-            let result = `${indent}- ${node.text}\n`;
+            let textPart = `- ${node.text}`;
+            if (node.style && node.style !== 'rect') {
+                textPart += ` {style:${node.style}}`;
+            }
+            let result = `${indent}${textPart}\n`;
             if (!node.isCollapsed) {
                 node.childrenIds.forEach(childId => {
                     result += buildMarkdownRecursive(childId, depth + 1);
@@ -454,7 +474,13 @@ class MindMap {
     
     exportToMarkdownFromData(markdown, newRootText) {
         const lines = markdown.split('\n');
-        lines[0] = `- ${newRootText}`;
+        const firstLine = lines[0];
+        const styleMatch = firstLine.match(/ {style:(\w+)}$/);
+        let newFirstLine = `- ${newRootText}`;
+        if(styleMatch){
+            newFirstLine += ` ${styleMatch[0]}`;
+        }
+        lines[0] = newFirstLine;
         return lines.join('\n');
     }
 
@@ -468,13 +494,22 @@ class MindMap {
         const parentStack = [];
         const levelStack = [];
 
-        lines.forEach((line, index) => {
+        lines.forEach((line) => {
             const indent = line.match(/^\s*/)[0];
             const level = indent.length / 2;
-            const text = line.trim().substring(2);
+            
+            const lineContent = line.trim().substring(2);
+            const styleMatch = lineContent.match(/ {style:(\w+)}$/);
+            let text = lineContent;
+            let style = 'rect';
+            if (styleMatch) {
+                text = lineContent.substring(0, styleMatch.index).trim();
+                style = styleMatch[1];
+            }
 
             if (level === 0) {
                 const rootId = this.createRootNode(text);
+                this.nodes[rootId].style = style;
                 parentStack.push(rootId);
                 levelStack.push(level);
             } else {
@@ -483,7 +518,7 @@ class MindMap {
                     levelStack.pop();
                 }
                 const parentId = parentStack[parentStack.length - 1];
-                const newNodeId = this.programmaticAddNode(parentId, text);
+                const newNodeId = this.programmaticAddNode(parentId, text, style);
                 if(newNodeId) {
                     parentStack.push(newNodeId);
                     levelStack.push(level);
@@ -497,6 +532,8 @@ class MindMap {
         this.isDirty = false;
         this.clearCanvas();
         this.currentMapId = null;
+        this.connectorStyle = 'straight';
+        this.updateActiveConnectorStyleButton(this.connectorStyle);
         this.createRootNode('موضوع اصلی');
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
@@ -615,10 +652,12 @@ class MindMap {
             id: this.currentMapId,
             scale: this.scale,
             pan: this.pan,
+            connectorStyle: this.connectorStyle
         };
 
         this.clearCanvas();
         this.currentMapId = preservedState.id;
+        this.connectorStyle = preservedState.connectorStyle;
 
         this.importFromMarkdown(newMarkdown);
         
@@ -633,10 +672,11 @@ class MindMap {
         this.triggerAutoSave();
     }
 
-    renderNodeDOM(nodeId, text, position) {
+    renderNodeDOM(nodeId, text, position, style = 'rect') {
         const nodeEl = document.createElement('div');
         nodeEl.id = `node-${nodeId}`;
         nodeEl.className = 'mindmap-node';
+        nodeEl.classList.add(`node-style-${style}`);
         nodeEl.style.left = `${position.x}px`;
         nodeEl.style.top = `${position.y}px`;
 
@@ -750,6 +790,11 @@ class MindMap {
         this.saveMapBtn.addEventListener('click', () => this.saveCurrentMap());
         this.undoBtn.addEventListener('click', () => this.undo());
         this.redoBtn.addEventListener('click', () => this.redo());
+
+        // Style buttons
+        this.nodeStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setNodeStyle(btn.dataset.style)));
+        this.connectorStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setConnectorStyle(btn.dataset.style)));
+
 
         // Instructions Panel
         this.closeInstructionsBtn.addEventListener('click', () => this.setInstructionsVisibility(false));
@@ -866,10 +911,12 @@ class MindMap {
     
         this.addNodeBtn.disabled = nothingSelected;
         this.deleteNodeBtn.disabled = nothingSelected || rootSelected;
+        this.nodeStyleButtons.forEach(btn => btn.disabled = nothingSelected);
     
         if (nothingSelected) {
             this.addNodeBtn.title = 'برای افزودن شاخه، یک گره را انتخاب کنید';
             this.deleteNodeBtn.title = 'برای حذف، یک گره را انتخاب کنید';
+            this.updateActiveNodeStyleButton(null);
         } else {
             this.addNodeBtn.title = 'افزودن شاخه به گره انتخاب‌شده';
             if (rootSelected) {
@@ -877,6 +924,8 @@ class MindMap {
             } else {
                 this.deleteNodeBtn.title = 'حذف گره انتخاب‌شده';
             }
+            const style = this.nodes[this.selectedNodeId]?.style || 'rect';
+            this.updateActiveNodeStyleButton(style);
         }
     }
 
@@ -886,6 +935,46 @@ class MindMap {
     
         this.undoBtn.title = this.undoBtn.disabled ? 'واگرد' : 'واگرد (Ctrl+Z)';
         this.redoBtn.title = this.redoBtn.disabled ? 'ازنو' : 'ازنو (Ctrl+Y)';
+    }
+
+    updateActiveNodeStyleButton(style) {
+        this.nodeStyleButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.style === style);
+        });
+    }
+
+    updateActiveConnectorStyleButton(style) {
+        this.connectorStyleButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.style === style);
+        });
+    }
+
+    setNodeStyle(style) {
+        if (!this.selectedNodeId) return;
+        const stateBefore = this.getSerializableState();
+
+        const node = this.nodes[this.selectedNodeId];
+        const oldStyle = node.style || 'rect';
+        node.style = style;
+        node.element.classList.remove(`node-style-${oldStyle}`);
+        node.element.classList.add(`node-style-${style}`);
+
+        this.updateActiveNodeStyleButton(style);
+        this.pushHistoryState(stateBefore);
+        this.triggerAutoSave();
+        this.updateMarkdownEditor();
+    }
+
+    setConnectorStyle(style) {
+        if (this.connectorStyle === style) return;
+        const stateBefore = this.getSerializableState();
+
+        this.connectorStyle = style;
+        this.updateActiveConnectorStyleButton(style);
+        this.updateUIVisibilityAndConnectors();
+        
+        this.pushHistoryState(stateBefore);
+        this.triggerAutoSave();
     }
     
     updateTransform() {
@@ -917,6 +1006,7 @@ class MindMap {
     updateUIVisibilityAndConnectors() {
         this.svgLayer.innerHTML = '';
         Object.values(this.nodes).forEach(node => {
+            if(!node.element) return;
             const collapseBtn = node.element.querySelector('.collapse-btn');
             if (collapseBtn) {
                 const hasVisibleChildren = node.childrenIds.some(id => this.nodes[id]);
@@ -946,12 +1036,40 @@ class MindMap {
         });
     }
 
+    getCurvedPathData(from, to) {
+        const dx = to.x - from.x;
+        const c1x = from.x + dx * 0.5;
+        const c1y = from.y;
+        const c2x = to.x - dx * 0.5;
+        const c2y = to.y;
+        return `M ${from.x},${from.y} C ${c1x},${c1y} ${c2x},${c2y} ${to.x},${to.y}`;
+    }
+
+    getSteppedPathData(from, to) {
+        const midX = from.x + (to.x - from.x) / 2;
+        return `M ${from.x},${from.y} L ${midX},${from.y} L ${midX},${to.y} L ${to.x},${to.y}`;
+    }
+
     drawConnector(fromPos, toPos) {
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', fromPos.x); line.setAttribute('y1', fromPos.y);
-        line.setAttribute('x2', toPos.x); line.setAttribute('y2', toPos.y);
-        line.setAttribute('class', 'connector-line');
-        this.svgLayer.appendChild(line);
+        let connectorEl;
+        switch (this.connectorStyle) {
+            case 'curved':
+                connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                connectorEl.setAttribute('d', this.getCurvedPathData(fromPos, toPos));
+                break;
+            case 'stepped':
+                connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                connectorEl.setAttribute('d', this.getSteppedPathData(fromPos, toPos));
+                break;
+            case 'straight':
+            default:
+                connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                connectorEl.setAttribute('x1', fromPos.x); connectorEl.setAttribute('y1', fromPos.y);
+                connectorEl.setAttribute('x2', toPos.x); connectorEl.setAttribute('y2', toPos.y);
+                break;
+        }
+        connectorEl.setAttribute('class', 'connector-line');
+        this.svgLayer.appendChild(connectorEl);
     }
     
     handleDragStart(e, nodeId) {

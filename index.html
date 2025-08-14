@@ -31,6 +31,33 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
         </button>
         <div class="toolbar-separator"></div>
+        <div class="toolbar-group" aria-label="استایل گره">
+            <button id="node-style-rect" data-style="rect" title="حاشیه مستطیل" class="node-style-btn active">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"></rect></svg>
+            </button>
+            <button id="node-style-ellipse" data-style="ellipse" title="حاشیه بیضی" class="node-style-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"></ellipse></svg>
+            </button>
+            <button id="node-style-underline" data-style="underline" title="خط زیر" class="node-style-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5v3a5 5 0 0 0 5 5 5 5 0 0 0 5-5V5M5 19h14"></path></svg>
+            </button>
+            <button id="node-style-none" data-style="none" title="بدون حاشیه" class="node-style-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" stroke-dasharray="4 2"></rect></svg>
+            </button>
+        </div>
+        <div class="toolbar-separator"></div>
+        <div class="toolbar-group" aria-label="استایل خط اتصال">
+            <button id="connector-style-straight" data-style="straight" title="خط صاف" class="connector-style-btn active">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+            </button>
+            <button id="connector-style-curved" data-style="curved" title="خط منحنی" class="connector-style-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12s4-8 8-8 8 8 8 8"></path></svg>
+            </button>
+            <button id="connector-style-stepped" data-style="stepped" title="خط شکسته" class="connector-style-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8v8h8"></path></svg>
+            </button>
+        </div>
+        <div class="toolbar-separator"></div>
         <button id="new-map-btn" title="ایجاد نقشه ذهنی جدید" aria-label="نقشه جدید">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
         </button>
