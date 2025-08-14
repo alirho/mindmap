@@ -15,9 +15,16 @@ class MindMap {
         // State Management
         this.nodes = {};
         this.selectedNodeId = null;
+        this.scale = 1;
+        this.pan = { x: 0, y: 0 };
+
         this.dragState = {
-            isDragging: false,
+            isDraggingNode: false,
             nodeId: null,
+            lastMousePos: { x: 0, y: 0 }
+        };
+        this.panState = {
+            isPanning: false,
             lastMousePos: { x: 0, y: 0 }
         };
 
@@ -28,37 +35,43 @@ class MindMap {
         this.createRootNode();
         this.bindEventListeners();
         this.updateAddNodeButton();
+        this.updateTransform();
     }
 
     createRootNode() {
-        const rootNodeId = this.createNode('موضوع اصلی', null, { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 });
+        // Center the root node initially
+        const rootNodeId = this.createNode('موضوع اصلی', null, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
         this.selectNode(rootNodeId);
     }
     
     bindEventListeners() {
-        this.canvas.addEventListener('click', (e) => {
-            if (e.target === this.canvas || e.target === this.nodesLayer) {
-                this.selectNode(null);
-            }
-        });
+        // --- Pan Listeners ---
+        this.canvas.addEventListener('mousedown', this.handlePanStart.bind(this));
+        
+        // --- Drag and Pan Listeners on document for better UX ---
+        document.addEventListener('mousemove', this.handleMouseMove.bind(this));
+        document.addEventListener('mouseup', this.handleMouseUp.bind(this));
 
+        // --- Zoom Listener ---
+        this.canvas.addEventListener('wheel', this.handleWheel.bind(this));
+
+        // --- Other Listeners ---
         this.addNodeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.addNode();
         });
-        
-        // Use document for mouse events to handle dragging outside the canvas gracefully
-        document.addEventListener('mousemove', this.handleDragMove.bind(this));
-        document.addEventListener('mouseup', this.handleDragEnd.bind(this));
-        
-        // Listen for global keydown events for shortcuts
         document.addEventListener('keydown', this.handleKeyDown.bind(this));
     }
-
+    
+    updateTransform() {
+        const transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.scale})`;
+        this.nodesLayer.style.transform = transform;
+        this.svgLayer.style.transform = transform;
+    }
+    
     // --- Node Management ---
 
     createNode(text, parentId, position) {
-        // The first node (with null parent) gets the fixed root ID
         const id = parentId === null ? ROOT_NODE_ID : `node_${Date.now()}`;
         const nodeEl = this.renderNodeDOM(id, text, position);
 
@@ -80,13 +93,11 @@ class MindMap {
     }
 
     deleteNode(nodeId) {
-        // Prevent deleting the root node
         if (!nodeId || nodeId === ROOT_NODE_ID) return;
 
         const allIdsToDelete = [nodeId, ...this.getAllDescendantIds(nodeId)];
         const nodeToDelete = this.nodes[nodeId];
 
-        // Remove DOM elements and data for the node and its descendants
         allIdsToDelete.forEach(id => {
             const node = this.nodes[id];
             if (node && node.element) {
@@ -95,13 +106,11 @@ class MindMap {
             delete this.nodes[id];
         });
 
-        // Remove the node from its parent's children array
         if (nodeToDelete.parentId && this.nodes[nodeToDelete.parentId]) {
             const parent = this.nodes[nodeToDelete.parentId];
             parent.childrenIds = parent.childrenIds.filter(childId => childId !== nodeId);
         }
 
-        // If the selected node was deleted, select its parent
         if (allIdsToDelete.includes(this.selectedNodeId)) {
             this.selectNode(nodeToDelete.parentId || null);
         }
@@ -120,17 +129,14 @@ class MindMap {
         const siblingOffsetY = 120;
         let newPosition;
 
-        // Special logic for the root node to balance children on both sides
         if (parentNode.id === ROOT_NODE_ID) {
             const childrenOnLeft = parentNode.childrenIds.filter(id => this.nodes[id].position.x < parentNode.position.x).length;
             const childrenOnRight = parentNode.childrenIds.filter(id => this.nodes[id].position.x > parentNode.position.x).length;
 
             const addOnLeft = childrenOnLeft <= childrenOnRight;
             
-            const direction = addOnLeft ? -1 : 1; // -1 for left, 1 for right
+            const direction = addOnLeft ? -1 : 1;
             const countOnSide = addOnLeft ? childrenOnLeft : childrenOnRight;
-
-            // Calculate vertical position to spread nodes out in a zig-zag pattern
             const offsetY = (countOnSide % 2 === 0 ? 1 : -1) * (Math.floor(countOnSide / 2) * siblingOffsetY + baseOffsetY);
 
             newPosition = {
@@ -138,9 +144,7 @@ class MindMap {
                 y: parentNode.position.y + offsetY
             };
         } else {
-            // Logic for all other nodes: children spawn away from the center
             const rootNode = this.nodes[ROOT_NODE_ID];
-            // Determine if the parent node is on the left or right of the root
             const direction = (parentNode.position.x < rootNode.position.x) ? -1 : 1;
             
             const childCount = parentNode.childrenIds.length;
@@ -170,12 +174,12 @@ class MindMap {
         textSpan.textContent = text;
         nodeEl.appendChild(textSpan);
 
-        // Bind events directly to the new DOM element
-        nodeEl.addEventListener('click', (e) => { e.stopPropagation(); this.selectNode(nodeId); });
         nodeEl.addEventListener('mousedown', (e) => { e.stopPropagation(); this.handleDragStart(e, nodeId); });
         nodeEl.addEventListener('dblclick', (e) => { e.stopPropagation(); this.makeNodeEditable(nodeId); });
+        // Use click for selection to differentiate from drag start
+        nodeEl.addEventListener('click', (e) => { e.stopPropagation(); this.selectNode(nodeId); });
 
-        // Add delete button only to non-root nodes
+
         if (nodeId !== ROOT_NODE_ID) {
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
@@ -199,14 +203,12 @@ class MindMap {
     }
     
     selectNode(nodeId) {
-        // Deselect previous node
         if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
             this.nodes[this.selectedNodeId].element.classList.remove('selected');
         }
         
         this.selectedNodeId = nodeId;
 
-        // Select new node
         if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
             this.nodes[this.selectedNodeId].element.classList.add('selected');
         }
@@ -223,7 +225,6 @@ class MindMap {
         const nodeEl = nodeData.element;
         const textSpan = nodeEl.querySelector('.node-text');
         
-        // Prevent editing if already in edit mode
         if (nodeEl.querySelector('.node-input')) return;
 
         const input = document.createElement('input');
@@ -244,11 +245,12 @@ class MindMap {
         
         input.addEventListener('blur', saveChanges);
         input.addEventListener('keydown', (e) => {
+            e.stopPropagation(); // Prevent keyboard shortcuts while editing
             if (e.key === 'Enter') {
                 e.preventDefault();
                 input.blur();
             } else if (e.key === 'Escape') {
-                input.value = nodeData.text; // Revert on escape
+                input.value = nodeData.text;
                 input.blur();
             }
         });
@@ -261,7 +263,7 @@ class MindMap {
     // --- Connectors ---
 
     updateAllConnectors() {
-        this.svgLayer.innerHTML = ''; // Clear all lines
+        this.svgLayer.innerHTML = '';
         Object.values(this.nodes).forEach(node => {
             if (node.parentId && this.nodes[node.parentId]) {
                 this.drawConnector(this.nodes[node.parentId].position, node.position);
@@ -279,38 +281,82 @@ class MindMap {
         this.svgLayer.appendChild(line);
     }
     
-    // --- Drag and Drop ---
+    // --- Mouse Event Handling ---
 
     handleDragStart(e, nodeId) {
-        if (e.button !== 0) return; // Only handle left-click drags
-        this.selectNode(nodeId);
-        
+        if (e.button !== 0) return;
         this.dragState = {
-            isDragging: true,
+            isDraggingNode: true,
             nodeId: nodeId,
             lastMousePos: { x: e.clientX, y: e.clientY }
         };
     }
-    
-    handleDragMove(e) {
-        if (!this.dragState.isDragging) return;
-        
-        const delta = {
-            dx: e.clientX - this.dragState.lastMousePos.x,
-            dy: e.clientY - this.dragState.lastMousePos.y,
+
+    handlePanStart(e) {
+        // Only pan if not clicking on a node
+        if (e.target.closest('.mindmap-node') || e.button !== 0) return;
+        e.preventDefault();
+        this.panState = {
+            isPanning: true,
+            lastMousePos: { x: e.clientX, y: e.clientY }
         };
-
-        this.moveNodeAndChildren(this.dragState.nodeId, delta);
-        
-        // Update last mouse position for the next move event
-        this.dragState.lastMousePos = { x: e.clientX, y: e.clientY };
+        this.canvas.classList.add('panning');
     }
     
-    handleDragEnd() {
-        this.dragState.isDragging = false;
-        this.dragState.nodeId = null;
+    handleMouseMove(e) {
+        if (this.panState.isPanning) {
+            const dx = e.clientX - this.panState.lastMousePos.x;
+            const dy = e.clientY - this.panState.lastMousePos.y;
+            this.pan.x += dx;
+            this.pan.y += dy;
+            this.updateTransform();
+            this.panState.lastMousePos = { x: e.clientX, y: e.clientY };
+        } else if (this.dragState.isDraggingNode) {
+            // Adjust delta by scale to move node correctly at any zoom level
+            const dx = (e.clientX - this.dragState.lastMousePos.x) / this.scale;
+            const dy = (e.clientY - this.dragState.lastMousePos.y) / this.scale;
+            this.moveNodeAndChildren(this.dragState.nodeId, { dx, dy });
+            this.dragState.lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+    }
+    
+    handleMouseUp() {
+        if (this.panState.isPanning) {
+            this.panState.isPanning = false;
+            this.canvas.classList.remove('panning');
+        }
+        if (this.dragState.isDraggingNode) {
+            this.dragState.isDraggingNode = false;
+            this.dragState.nodeId = null;
+        }
     }
 
+    handleWheel(e) {
+        e.preventDefault();
+        const zoomFactor = 1.1;
+        const oldScale = this.scale;
+        
+        if (e.deltaY < 0) {
+            this.scale *= zoomFactor;
+        } else {
+            this.scale /= zoomFactor;
+        }
+        // Clamp scale to reasonable limits
+        this.scale = Math.max(0.2, Math.min(this.scale, 4));
+
+        const mousePoint = { x: e.clientX, y: e.clientY };
+        
+        // The point in world coords that should stay under the mouse
+        const worldX = (mousePoint.x - this.pan.x) / oldScale;
+        const worldY = (mousePoint.y - this.pan.y) / oldScale;
+
+        // New pan to keep the world point under the mouse
+        this.pan.x = mousePoint.x - worldX * this.scale;
+        this.pan.y = mousePoint.y - worldY * this.scale;
+        
+        this.updateTransform();
+    }
+    
     moveNodeAndChildren(rootNodeId, delta) {
         const idsToMove = [rootNodeId, ...this.getAllDescendantIds(rootNodeId)];
         idsToMove.forEach(id => {
@@ -329,22 +375,19 @@ class MindMap {
     // --- Keyboard Shortcuts ---
 
     handleKeyDown(e) {
-        // Do not trigger shortcuts if no node is selected or if we are editing text.
         if (!this.selectedNodeId || document.activeElement.tagName === 'INPUT') {
             return;
         }
 
         switch (e.key) {
             case 'Tab':
-                e.preventDefault(); // Prevent default browser tabbing
+                e.preventDefault();
                 this.addNode();
                 break;
-            
             case 'F2':
-                e.preventDefault(); // Prevent default browser actions for F2
+                e.preventDefault();
                 this.makeNodeEditable(this.selectedNodeId);
                 break;
-                
             case 'Delete':
                 e.preventDefault();
                 this.deleteNode(this.selectedNodeId);
@@ -359,12 +402,10 @@ class MindMap {
         if (!node || !node.childrenIds || node.childrenIds.length === 0) {
             return [];
         }
-        // Recursively flatten the array of children and their descendants
         return node.childrenIds.flatMap(childId => [childId, ...this.getAllDescendantIds(childId)]);
     }
 }
 
-// Initialize the application once the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
     new MindMap('mindmap-canvas');
 });
