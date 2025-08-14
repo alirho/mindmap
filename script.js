@@ -93,6 +93,11 @@ class MindMap {
         this.panelToggleBtn = document.getElementById('panel-toggle-btn');
         this.savedMapsList = document.getElementById('saved-maps-list');
         
+        // Instructions Panel
+        this.instructionsPanel = document.getElementById('instructions');
+        this.closeInstructionsBtn = document.getElementById('close-instructions-btn');
+        this.showInstructionsBtn = document.getElementById('show-instructions-btn');
+        
         // Panel Tabs
         this.filesTabBtn = document.getElementById('files-tab-btn');
         this.editorTabBtn = document.getElementById('editor-tab-btn');
@@ -134,6 +139,7 @@ class MindMap {
     async init() {
         await this.db.open();
         this.bindEventListeners();
+        this.initInstructionsPanelState();
         await this.createNewMap();
         await this.renderSavedMapsList();
         this.updateTransform();
@@ -313,9 +319,8 @@ class MindMap {
     triggerAutoSave() {
         clearTimeout(this.autoSaveTimer);
         this.isDirty = true;
-        if (this.saveMapBtn.title === 'ذخیره شد') {
-            this.saveMapBtn.title = 'ذخیره نقشه فعلی';
-        }
+        this.saveMapBtn.disabled = false;
+        this.saveMapBtn.title = 'ذخیره نقشه فعلی';
         this.autoSaveTimer = setTimeout(async () => {
             await this.saveCurrentMap();
         }, 2500);
@@ -323,7 +328,7 @@ class MindMap {
 
     async saveCurrentMap() {
         clearTimeout(this.autoSaveTimer);
-        if (!this.nodes[ROOT_NODE_ID]) return;
+        if (!this.nodes[ROOT_NODE_ID] || !this.isDirty) return;
 
         this.saveMapBtn.title = 'در حال ذخیره...';
         this.saveMapBtn.disabled = true;
@@ -359,15 +364,8 @@ class MindMap {
         this.isDirty = false;
         
         this.saveMapBtn.title = 'ذخیره شد';
-        this.saveMapBtn.disabled = false;
         
         await this.renderSavedMapsList();
-
-        setTimeout(() => {
-            if (!this.isDirty) {
-                this.saveMapBtn.title = 'ذخیره نقشه فعلی';
-            }
-        }, 2000);
     }
 
     async loadMap(mapId) {
@@ -391,7 +389,7 @@ class MindMap {
             this.panelToggleBtn.click();
         }
         this.saveMapBtn.title = 'ذخیره نقشه فعلی';
-        this.saveMapBtn.disabled = false;
+        this.saveMapBtn.disabled = true;
     }
     
     async deleteMap(mapId) {
@@ -510,7 +508,7 @@ class MindMap {
         
         this.updateToolbarButtons();
         this.saveMapBtn.title = 'ذخیره نقشه فعلی';
-        this.saveMapBtn.disabled = false;
+        this.saveMapBtn.disabled = true;
         await this.renderSavedMapsList();
     }
     
@@ -753,6 +751,10 @@ class MindMap {
         this.undoBtn.addEventListener('click', () => this.undo());
         this.redoBtn.addEventListener('click', () => this.redo());
 
+        // Instructions Panel
+        this.closeInstructionsBtn.addEventListener('click', () => this.setInstructionsVisibility(false));
+        this.showInstructionsBtn.addEventListener('click', () => this.setInstructionsVisibility(true));
+        
         // Side panel
         this.panelToggleBtn.addEventListener('click', () => {
             this.sidePanel.classList.toggle('open');
@@ -776,6 +778,26 @@ class MindMap {
                  openMenu.classList.remove('open');
             }
         });
+    }
+
+    initInstructionsPanelState() {
+        const isVisible = localStorage.getItem('instructionsVisible') !== 'false';
+        if (!isVisible) {
+            this.instructionsPanel.classList.add('closed');
+            this.showInstructionsBtn.classList.add('visible');
+        }
+    }
+    
+    setInstructionsVisibility(visible) {
+        if (visible) {
+            this.instructionsPanel.classList.remove('closed');
+            this.showInstructionsBtn.classList.remove('visible');
+            localStorage.setItem('instructionsVisible', 'true');
+        } else {
+            this.instructionsPanel.classList.add('closed');
+            this.showInstructionsBtn.classList.add('visible');
+            localStorage.setItem('instructionsVisible', 'false');
+        }
     }
 
     switchTab(tabName) {
