@@ -16,7 +16,19 @@
     </div>
 
     <div id="toolbar">
-        <button id="add-node-btn">افزودن شاخه</button>
+        <button id="save-map-btn" title="ذخیره نقشه فعلی">ذخیره</button>
+        <button id="new-map-btn" title="ایجاد نقشه ذهنی جدید">نقشه جدید</button>
+        <button id="add-node-btn" title="افزودن شاخه به گره انتخاب‌شده">افزودن شاخه</button>
+    </div>
+
+    <button id="panel-toggle-btn" aria-label="نمایش/مخفی کردن پنل فایل‌ها">☰</button>
+    <div id="side-panel">
+        <div class="panel-header">
+            <h2>نقشه‌های من</h2>
+        </div>
+        <ul id="saved-maps-list">
+            <!-- Saved maps will be dynamically inserted here -->
+        </ul>
     </div>
 
     <div id="instructions">
@@ -25,11 +37,26 @@
             <li><strong>انتخاب گره:</strong> کلیک</li>
             <li><strong>ویرایش متن:</strong> دابل کلیک یا <code>F2</code></li>
             <li><strong>افزودن شاخه:</strong> <code>Tab</code></li>
+            <li><strong>ذخیره نقشه:</strong> <code>Ctrl+S</code></li>
             <li><strong>حذف گره:</strong> <code>Delete</code></li>
             <li><strong>جابجایی گره:</strong> کشیدن و رها کردن</li>
             <li><strong>بزرگ‌نمایی:</strong> غلتک ماوس</li>
             <li><strong>جابجایی صفحه:</strong> کلیک و کشیدن پس‌زمینه</li>
         </ul>
+    </div>
+
+    <div id="properties-modal-overlay" style="display: none;">
+        <div id="properties-modal">
+            <div class="modal-header">
+                <h2>ویژگی‌های نقشه</h2>
+                <button id="modal-close-btn" aria-label="بستن">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p><strong>نام:</strong> <span id="prop-map-name"></span></p>
+                <p><strong>تاریخ ایجاد:</strong> <span id="prop-map-created"></span></p>
+                <p><strong>آخرین ویرایش:</strong> <span id="prop-map-modified"></span></p>
+            </div>
+        </div>
     </div>
 
     <script src="script.js" type="module"></script>
