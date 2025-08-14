@@ -89,13 +89,20 @@ class MindMap {
         this.sidePanel = document.getElementById('side-panel');
         this.panelToggleBtn = document.getElementById('panel-toggle-btn');
         this.savedMapsList = document.getElementById('saved-maps-list');
+        
+        // Panel Tabs
+        this.filesTabBtn = document.getElementById('files-tab-btn');
+        this.editorTabBtn = document.getElementById('editor-tab-btn');
+        this.filesContent = document.getElementById('files-content');
+        this.editorContent = document.getElementById('editor-content');
+        this.markdownEditor = document.getElementById('markdown-editor');
+
         // Modal elements
         this.propertiesModalOverlay = document.getElementById('properties-modal-overlay');
         this.modalCloseBtn = document.getElementById('modal-close-btn');
         this.propMapName = document.getElementById('prop-map-name');
         this.propMapCreated = document.getElementById('prop-map-created');
         this.propMapModified = document.getElementById('prop-map-modified');
-
 
         // State Management
         this.nodes = {};
@@ -108,9 +115,10 @@ class MindMap {
         this.dragState = { isDraggingNode: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
         this.panState = { isPanning: false, lastMousePos: { x: 0, y: 0 } };
         
-        // Auto-save state
+        // Auto-save & Editor state
         this.autoSaveTimer = null;
         this.isDirty = false;
+        this.updateMapFromMarkdownDebounced = this.debounce(this.updateMapFromMarkdown, 750);
 
         this.init();
     }
@@ -121,6 +129,15 @@ class MindMap {
         await this.createNewMap();
         await this.renderSavedMapsList();
         this.updateTransform();
+    }
+    
+    debounce(func, delay) {
+        let timeout;
+        return (...args) => {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), delay);
+        };
     }
 
     // --- Core Node Management ---
@@ -169,6 +186,7 @@ class MindMap {
         if(newNodeId) {
             this.selectNode(newNodeId);
             this.updateUIVisibilityAndConnectors();
+            this.updateMarkdownEditor();
             this.makeNodeEditable(newNodeId);
             this.triggerAutoSave();
         }
@@ -194,6 +212,7 @@ class MindMap {
             this.selectNode(nodeToDelete.parentId || null);
         }
         this.updateUIVisibilityAndConnectors();
+        this.updateMarkdownEditor();
         this.triggerAutoSave();
     }
     
@@ -268,6 +287,7 @@ class MindMap {
         this.importFromMarkdown(map.markdown);
         this.currentMapId = map.id;
         this.updateUIVisibilityAndConnectors();
+        this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
         await this.renderSavedMapsList();
         if(this.sidePanel.classList.contains('open')) {
@@ -297,7 +317,7 @@ class MindMap {
             map.name = newName.trim();
             map.modifiedAt = new Date();
             if(map.id === this.currentMapId) {
-                // This will trigger an auto-save for the current map
+                // This will trigger an auto-save and editor update
                 this.updateNodeText(ROOT_NODE_ID, newName);
             } else {
                 // If it's not the current map, we need to update its markdown manually
@@ -328,9 +348,11 @@ class MindMap {
             if (!node) return '';
             const indent = '  '.repeat(depth);
             let result = `${indent}- ${node.text}\n`;
-            node.childrenIds.forEach(childId => {
-                result += buildMarkdownRecursive(childId, depth + 1);
-            });
+            if (!node.isCollapsed) {
+                node.childrenIds.forEach(childId => {
+                    result += buildMarkdownRecursive(childId, depth + 1);
+                });
+            }
             return result;
         };
         return buildMarkdownRecursive(ROOT_NODE_ID, 0);
@@ -383,6 +405,7 @@ class MindMap {
         this.currentMapId = null;
         this.createRootNode('موضوع اصلی');
         this.updateUIVisibilityAndConnectors();
+        this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
         this.updateAddNodeButton();
         this.saveMapBtn.textContent = 'ذخیره';
@@ -471,7 +494,42 @@ class MindMap {
     hideMapProperties() {
         this.propertiesModalOverlay.style.display = 'none';
     }
+
+    updateMarkdownEditor() {
+        if (!this.nodes[ROOT_NODE_ID]) return;
+        const markdown = this.exportToMarkdown();
+        if (this.markdownEditor.value !== markdown) {
+            this.markdownEditor.value = markdown;
+        }
+    }
     
+    updateMapFromMarkdown() {
+        const newMarkdown = this.markdownEditor.value;
+        const currentMarkdown = this.exportToMarkdown();
+        if (newMarkdown === currentMarkdown) {
+            return;
+        }
+
+        const preservedState = {
+            id: this.currentMapId,
+            scale: this.scale,
+            pan: this.pan,
+        };
+
+        this.clearCanvas();
+        this.currentMapId = preservedState.id;
+
+        this.importFromMarkdown(newMarkdown);
+        
+        this.scale = preservedState.scale;
+        this.pan = preservedState.pan;
+        this.updateTransform();
+
+        this.updateUIVisibilityAndConnectors();
+        this.selectNode(ROOT_NODE_ID);
+        this.triggerAutoSave();
+    }
+
     renderNodeDOM(nodeId, text, position) {
         const nodeEl = document.createElement('div');
         nodeEl.id = `node-${nodeId}`;
@@ -514,6 +572,7 @@ class MindMap {
                         textSpan.textContent = trimmedText;
                     }
                 }
+                this.updateMarkdownEditor();
                 if (nodeId === ROOT_NODE_ID) {
                     this.renderSavedMapsList();
                 }
@@ -575,6 +634,9 @@ class MindMap {
         this.panelToggleBtn.addEventListener('click', () => {
             this.sidePanel.classList.toggle('open');
         });
+        this.filesTabBtn.addEventListener('click', () => this.switchTab('files'));
+        this.editorTabBtn.addEventListener('click', () => this.switchTab('editor'));
+        this.markdownEditor.addEventListener('input', () => this.updateMapFromMarkdownDebounced());
         
         // Modal
         this.modalCloseBtn.addEventListener('click', () => this.hideMapProperties());
@@ -593,8 +655,20 @@ class MindMap {
         });
     }
 
+    switchTab(tabName) {
+        const isFiles = tabName === 'files';
+        this.filesTabBtn.classList.toggle('active', isFiles);
+        this.editorTabBtn.classList.toggle('active', !isFiles);
+        this.filesContent.classList.toggle('active', isFiles);
+        this.editorContent.classList.toggle('active', !isFiles);
+        
+        if (!isFiles) {
+            this.updateMarkdownEditor();
+        }
+    }
+
     handleKeyDown(e) {
-        if (document.activeElement.tagName === 'INPUT' || document.querySelector('#properties-modal-overlay[style*="display: flex"]')) {
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.querySelector('#properties-modal-overlay[style*="display: flex"]')) {
             if (e.key === 'Escape') this.hideMapProperties();
             return;
         }
@@ -650,6 +724,7 @@ class MindMap {
             }
         }
         this.updateUIVisibilityAndConnectors();
+        this.updateMarkdownEditor();
         this.triggerAutoSave();
     }
     
@@ -699,7 +774,7 @@ class MindMap {
     }
 
     handlePanStart(e) {
-        if (e.target.closest('.mindmap-node') || e.button !== 0) return;
+        if (e.target.closest('.mindmap-node') || e.target.closest('#markdown-editor') || e.button !== 0) return;
         e.preventDefault();
         this.panState = { isPanning: true, lastMousePos: { x: e.clientX, y: e.clientY } };
         this.canvas.classList.add('panning');
@@ -727,11 +802,13 @@ class MindMap {
         if (this.dragState.isDraggingNode) {
             this.dragState.isDraggingNode = false; 
             this.dragState.nodeId = null;
+            this.updateMarkdownEditor();
             this.triggerAutoSave();
         }
     }
 
     handleWheel(e) {
+        if (e.target.closest('#side-panel')) return;
         e.preventDefault();
         const zoomFactor = 1.1;
         const oldScale = this.scale;
@@ -768,7 +845,7 @@ class MindMap {
     
     getAllDescendantIds(nodeId) {
         const node = this.nodes[nodeId];
-        if (!node || !node.childrenIds || node.childrenIds.length === 0) return [];
+        if (!node || !node.childrenIds || node.childrenIds.length === 0 || node.isCollapsed) return [];
         return node.childrenIds.flatMap(childId => [childId, ...this.getAllDescendantIds(childId)]);
     }
 

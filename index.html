@@ -24,11 +24,19 @@
     <button id="panel-toggle-btn" aria-label="نمایش/مخفی کردن پنل فایل‌ها">☰</button>
     <div id="side-panel">
         <div class="panel-header">
-            <h2>نقشه‌های من</h2>
+            <div class="panel-tabs">
+                <button id="files-tab-btn" class="active">نقشه‌ها</button>
+                <button id="editor-tab-btn">ویرایشگر</button>
+            </div>
         </div>
-        <ul id="saved-maps-list">
-            <!-- Saved maps will be dynamically inserted here -->
-        </ul>
+        <div id="files-content" class="panel-content active">
+            <ul id="saved-maps-list">
+                <!-- Saved maps will be dynamically inserted here -->
+            </ul>
+        </div>
+        <div id="editor-content" class="panel-content">
+            <textarea id="markdown-editor" spellcheck="false" placeholder="- موضوع اصلی&#10;  - شاخه اول&#10;  - شاخه دوم"></textarea>
+        </div>
     </div>
 
     <div id="instructions">
