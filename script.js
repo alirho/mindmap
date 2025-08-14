@@ -84,8 +84,11 @@ class MindMap {
         this.svgLayer = document.getElementById('mindmap-svg-layer');
         this.nodesLayer = document.getElementById('mindmap-nodes-layer');
         this.addNodeBtn = document.getElementById('add-node-btn');
+        this.deleteNodeBtn = document.getElementById('delete-node-btn');
         this.newMapBtn = document.getElementById('new-map-btn');
         this.saveMapBtn = document.getElementById('save-map-btn');
+        this.undoBtn = document.getElementById('undo-btn');
+        this.redoBtn = document.getElementById('redo-btn');
         this.sidePanel = document.getElementById('side-panel');
         this.panelToggleBtn = document.getElementById('panel-toggle-btn');
         this.savedMapsList = document.getElementById('saved-maps-list');
@@ -120,6 +123,11 @@ class MindMap {
         this.isDirty = false;
         this.updateMapFromMarkdownDebounced = this.debounce(this.updateMapFromMarkdown, 750);
 
+        // History Management (Undo/Redo)
+        this.undoStack = [];
+        this.redoStack = [];
+        this.dragStartState = null;
+
         this.init();
     }
 
@@ -138,6 +146,79 @@ class MindMap {
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(context, args), delay);
         };
+    }
+
+    // --- History (Undo/Redo) Management ---
+
+    getSerializableState() {
+        const serializableNodes = {};
+        for (const id in this.nodes) {
+            const node = this.nodes[id];
+            serializableNodes[id] = {
+                id: node.id,
+                text: node.text,
+                parentId: node.parentId,
+                childrenIds: [...node.childrenIds],
+                position: { ...node.position },
+                isCollapsed: node.isCollapsed
+            };
+        }
+        return { nodes: serializableNodes, selectedNodeId: this.selectedNodeId };
+    }
+    
+    pushHistoryState(stateBeforeAction) {
+        this.undoStack.push(stateBeforeAction);
+        this.redoStack = []; // A new action clears the redo stack
+        this.updateUndoRedoButtons();
+    }
+    
+    loadFromState(state) {
+        if (!state) return;
+        this.clearCanvas();
+        
+        const newNodes = {};
+        for (const id in state.nodes) {
+            newNodes[id] = { ...state.nodes[id], element: null };
+        }
+        this.nodes = newNodes;
+
+        for (const id in this.nodes) {
+            const nodeData = this.nodes[id];
+            const nodeEl = this.renderNodeDOM(nodeData.id, nodeData.text, nodeData.position);
+            nodeData.element = nodeEl;
+        }
+
+        this.updateUIVisibilityAndConnectors();
+        if (state.selectedNodeId && this.nodes[state.selectedNodeId]) {
+            this.selectNode(state.selectedNodeId);
+        } else {
+            this.selectNode(null);
+        }
+        this.updateMarkdownEditor();
+    }
+
+    undo() {
+        if (this.undoStack.length === 0) return;
+        
+        const stateToRestore = this.undoStack.pop();
+        const currentState = this.getSerializableState();
+        this.redoStack.push(currentState);
+        
+        this.loadFromState(stateToRestore);
+        this.updateUndoRedoButtons();
+        this.triggerAutoSave();
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return;
+        
+        const stateToRestore = this.redoStack.pop();
+        const currentState = this.getSerializableState();
+        this.undoStack.push(currentState);
+        
+        this.loadFromState(stateToRestore);
+        this.updateUndoRedoButtons();
+        this.triggerAutoSave();
     }
 
     // --- Core Node Management ---
@@ -182,18 +263,26 @@ class MindMap {
     
     addNodeForSelected() {
         if (!this.selectedNodeId) return;
+
+        const stateBefore = this.getSerializableState();
+
         const newNodeId = this.programmaticAddNode(this.selectedNodeId, 'شاخه جدید');
         if(newNodeId) {
             this.selectNode(newNodeId);
             this.updateUIVisibilityAndConnectors();
             this.updateMarkdownEditor();
             this.makeNodeEditable(newNodeId);
+            
+            this.pushHistoryState(stateBefore);
             this.triggerAutoSave();
         }
     }
 
     deleteNode(nodeId) {
         if (!nodeId || nodeId === ROOT_NODE_ID) return;
+
+        const stateBefore = this.getSerializableState();
+        
         const allIdsToDelete = [nodeId, ...this.getAllDescendantIds(nodeId)];
         const nodeToDelete = this.nodes[nodeId];
 
@@ -213,7 +302,10 @@ class MindMap {
         }
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
+        
+        this.pushHistoryState(stateBefore);
         this.triggerAutoSave();
+        this.updateToolbarButtons();
     }
     
     // --- Map Data Management (DB, Markdown) ---
@@ -221,8 +313,8 @@ class MindMap {
     triggerAutoSave() {
         clearTimeout(this.autoSaveTimer);
         this.isDirty = true;
-        if (this.saveMapBtn.textContent === 'ذخیره شد') {
-            this.saveMapBtn.textContent = 'ذخیره';
+        if (this.saveMapBtn.title === 'ذخیره شد') {
+            this.saveMapBtn.title = 'ذخیره نقشه فعلی';
         }
         this.autoSaveTimer = setTimeout(async () => {
             await this.saveCurrentMap();
@@ -233,7 +325,7 @@ class MindMap {
         clearTimeout(this.autoSaveTimer);
         if (!this.nodes[ROOT_NODE_ID]) return;
 
-        this.saveMapBtn.textContent = 'در حال ذخیره...';
+        this.saveMapBtn.title = 'در حال ذخیره...';
         this.saveMapBtn.disabled = true;
 
         const markdown = this.exportToMarkdown();
@@ -266,14 +358,14 @@ class MindMap {
         console.log(`Map '${mapName}' saved successfully.`);
         this.isDirty = false;
         
-        this.saveMapBtn.textContent = 'ذخیره شد';
+        this.saveMapBtn.title = 'ذخیره شد';
         this.saveMapBtn.disabled = false;
         
         await this.renderSavedMapsList();
 
         setTimeout(() => {
             if (!this.isDirty) {
-                this.saveMapBtn.textContent = 'ذخیره';
+                this.saveMapBtn.title = 'ذخیره نقشه فعلی';
             }
         }, 2000);
     }
@@ -289,11 +381,16 @@ class MindMap {
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
+
+        this.undoStack = [];
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+        
         await this.renderSavedMapsList();
         if(this.sidePanel.classList.contains('open')) {
             this.panelToggleBtn.click();
         }
-        this.saveMapBtn.textContent = 'ذخیره';
+        this.saveMapBtn.title = 'ذخیره نقشه فعلی';
         this.saveMapBtn.disabled = false;
     }
     
@@ -314,13 +411,12 @@ class MindMap {
         if(!map) return;
         const newName = prompt("نام جدید نقشه را وارد کنید:", map.name);
         if (newName && newName.trim() !== '') {
-            map.name = newName.trim();
-            map.modifiedAt = new Date();
             if(map.id === this.currentMapId) {
-                // This will trigger an auto-save and editor update
-                this.updateNodeText(ROOT_NODE_ID, newName);
+                const stateBefore = this.getSerializableState();
+                this._updateNodeTextAndSave(ROOT_NODE_ID, newName, stateBefore);
             } else {
-                // If it's not the current map, we need to update its markdown manually
+                map.name = newName.trim();
+                map.modifiedAt = new Date();
                 map.markdown = this.exportToMarkdownFromData(map.markdown, newName);
                 await this.db.put(map);
             }
@@ -407,8 +503,13 @@ class MindMap {
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
-        this.updateAddNodeButton();
-        this.saveMapBtn.textContent = 'ذخیره';
+        
+        this.undoStack = [];
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+        
+        this.updateToolbarButtons();
+        this.saveMapBtn.title = 'ذخیره نقشه فعلی';
         this.saveMapBtn.disabled = false;
         await this.renderSavedMapsList();
     }
@@ -450,9 +551,9 @@ class MindMap {
                 <div class="map-menu-container">
                     <button class="menu-toggle-btn" aria-label="منوی گزینه‌ها">⋮</button>
                     <div class="map-item-menu">
-                        <button class="properties-btn">ویژگی‌ها</button>
                         <button class="rename-btn">تغییر نام</button>
                         <button class="download-btn">دانلود</button>
+                        <button class="properties-btn">ویژگی‌ها</button>
                         <button class="delete-btn">حذف</button>
                     </div>
                 </div>
@@ -510,6 +611,8 @@ class MindMap {
             return;
         }
 
+        const stateBefore = this.getSerializableState();
+
         const preservedState = {
             id: this.currentMapId,
             scale: this.scale,
@@ -527,6 +630,8 @@ class MindMap {
 
         this.updateUIVisibilityAndConnectors();
         this.selectNode(ROOT_NODE_ID);
+
+        this.pushHistoryState(stateBefore);
         this.triggerAutoSave();
     }
 
@@ -560,7 +665,7 @@ class MindMap {
         return nodeEl;
     }
     
-    updateNodeText(nodeId, newText) {
+    _updateNodeText(nodeId, newText) {
         const nodeData = this.nodes[nodeId];
         if (nodeData) {
             const trimmedText = newText.trim();
@@ -572,13 +677,18 @@ class MindMap {
                         textSpan.textContent = trimmedText;
                     }
                 }
-                this.updateMarkdownEditor();
-                if (nodeId === ROOT_NODE_ID) {
-                    this.renderSavedMapsList();
-                }
-                this.triggerAutoSave();
             }
         }
+    }
+    
+    _updateNodeTextAndSave(nodeId, newText, stateBefore) {
+        this._updateNodeText(nodeId, newText);
+        this.pushHistoryState(stateBefore);
+        this.updateMarkdownEditor();
+        if (nodeId === ROOT_NODE_ID) {
+           this.renderSavedMapsList();
+        }
+        this.triggerAutoSave();
     }
     
     makeNodeEditable(nodeId) {
@@ -594,11 +704,17 @@ class MindMap {
         input.value = nodeData.text;
 
         const saveChanges = () => {
-            const newText = input.value.trim() || nodeData.text;
+            const oldText = nodeData.text;
+            const newText = input.value.trim() || oldText;
+            
             if (nodeEl.contains(input)) {
                 nodeEl.replaceChild(textSpan, input);
             }
-            this.updateNodeText(nodeId, newText);
+            
+            if (newText !== oldText) {
+                const stateBefore = this.getSerializableState();
+                this._updateNodeTextAndSave(nodeId, newText, stateBefore);
+            }
         };
         
         input.addEventListener('blur', saveChanges);
@@ -627,8 +743,15 @@ class MindMap {
 
         // Toolbar buttons
         this.addNodeBtn.addEventListener('click', () => this.addNodeForSelected());
+        this.deleteNodeBtn.addEventListener('click', () => {
+            if (this.selectedNodeId) {
+                this.deleteNode(this.selectedNodeId);
+            }
+        });
         this.newMapBtn.addEventListener('click', () => this.createNewMap());
         this.saveMapBtn.addEventListener('click', () => this.saveCurrentMap());
+        this.undoBtn.addEventListener('click', () => this.undo());
+        this.redoBtn.addEventListener('click', () => this.redo());
 
         // Side panel
         this.panelToggleBtn.addEventListener('click', () => {
@@ -672,11 +795,23 @@ class MindMap {
             if (e.key === 'Escape') this.hideMapProperties();
             return;
         }
-
-        if (e.ctrlKey && e.key === 's') {
-            e.preventDefault();
-            this.saveCurrentMap();
-            return;
+        
+        if (e.ctrlKey) {
+            if (e.key === 's') {
+                e.preventDefault();
+                this.saveCurrentMap();
+                return;
+            }
+            if (e.key === 'z') {
+                e.preventDefault();
+                this.undo();
+                return;
+            }
+            if (e.key === 'y') {
+                e.preventDefault();
+                this.redo();
+                return;
+            }
         }
 
         if (!this.selectedNodeId) return;
@@ -700,11 +835,35 @@ class MindMap {
         if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
             this.nodes[this.selectedNodeId].element.classList.add('selected');
         }
-        this.updateAddNodeButton();
+        this.updateToolbarButtons();
     }
 
-    updateAddNodeButton() {
-        this.addNodeBtn.disabled = !this.selectedNodeId;
+    updateToolbarButtons() {
+        const nothingSelected = !this.selectedNodeId;
+        const rootSelected = this.selectedNodeId === ROOT_NODE_ID;
+    
+        this.addNodeBtn.disabled = nothingSelected;
+        this.deleteNodeBtn.disabled = nothingSelected || rootSelected;
+    
+        if (nothingSelected) {
+            this.addNodeBtn.title = 'برای افزودن شاخه، یک گره را انتخاب کنید';
+            this.deleteNodeBtn.title = 'برای حذف، یک گره را انتخاب کنید';
+        } else {
+            this.addNodeBtn.title = 'افزودن شاخه به گره انتخاب‌شده';
+            if (rootSelected) {
+                this.deleteNodeBtn.title = 'گره اصلی را نمی‌توان حذف کرد';
+            } else {
+                this.deleteNodeBtn.title = 'حذف گره انتخاب‌شده';
+            }
+        }
+    }
+
+    updateUndoRedoButtons() {
+        this.undoBtn.disabled = this.undoStack.length === 0;
+        this.redoBtn.disabled = this.redoStack.length === 0;
+    
+        this.undoBtn.title = this.undoBtn.disabled ? 'واگرد' : 'واگرد (Ctrl+Z)';
+        this.redoBtn.title = this.redoBtn.disabled ? 'ازنو' : 'ازنو (Ctrl+Y)';
     }
     
     updateTransform() {
@@ -716,6 +875,9 @@ class MindMap {
     toggleCollapse(nodeId) {
         const node = this.nodes[nodeId];
         if (!node || node.childrenIds.length === 0) return;
+
+        const stateBefore = this.getSerializableState();
+
         node.isCollapsed = !node.isCollapsed;
         if (node.isCollapsed) {
             const descendantIds = this.getAllDescendantIds(nodeId);
@@ -725,6 +887,8 @@ class MindMap {
         }
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
+        
+        this.pushHistoryState(stateBefore);
         this.triggerAutoSave();
     }
     
@@ -770,6 +934,7 @@ class MindMap {
     
     handleDragStart(e, nodeId) {
         if (e.button !== 0) return;
+        this.dragStartState = this.getSerializableState();
         this.dragState = { isDraggingNode: true, nodeId: nodeId, lastMousePos: { x: e.clientX, y: e.clientY } };
     }
 
@@ -800,9 +965,12 @@ class MindMap {
             this.panState.isPanning = false; this.canvas.classList.remove('panning');
         }
         if (this.dragState.isDraggingNode) {
+            if(this.dragStartState) {
+                this.pushHistoryState(this.dragStartState);
+                this.dragStartState = null;
+            }
             this.dragState.isDraggingNode = false; 
             this.dragState.nodeId = null;
-            this.updateMarkdownEditor();
             this.triggerAutoSave();
         }
     }
