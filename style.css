@@ -198,16 +198,18 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--button-bg);
-    color: var(--button-text);
-    border: none;
+    background-color: var(--info-bg);
+    color: var(--info-text);
+    border: 1px solid var(--info-border);
     border-radius: 50%;
     cursor: pointer;
-    transition: background-color 0.2s, transform 0.1s ease, box-shadow 0.2s;
+    transition: background-color 0.2s, transform 0.1s ease, box-shadow 0.2s, border-color 0.2s, color 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 #toolbar button:hover {
-    background-color: #1d4ed8;
+    background-color: #e2e8f0;
+    border-color: #d1d5db;
 }
 
 #toolbar button:active {
@@ -215,15 +217,19 @@ body {
 }
 
 #toolbar button.active {
-    background-color: var(--button-active-bg);
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+    background-color: #e0f2fe;
+    border-color: var(--selected-border);
+    color: var(--selected-border);
+    box-shadow: none;
 }
 
 #toolbar button:disabled {
-    background-color: var(--button-disabled-bg);
+    background-color: var(--info-bg);
+    color: #cbd5e1;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+    opacity: 0.7;
 }
 
 #toolbar button svg {
