@@ -120,14 +120,14 @@ class MindMap {
 
         // State Management
         this.nodes = {};
-        this.selectedNodeId = null;
+        this.selectedNodeIds = [];
         this.scale = 1;
         this.pan = { x: 0, y: 0 };
         this.currentMapId = null;
         this.db = new MindMapDB();
         this.connectorStyle = 'straight';
 
-        this.dragState = { isDraggingNode: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
+        this.dragState = { isDraggingNode: false, hasDragged: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
         this.panState = { isPanning: false, lastMousePos: { x: 0, y: 0 } };
         
         // Auto-save & Editor state
@@ -139,6 +139,9 @@ class MindMap {
         this.undoStack = [];
         this.redoStack = [];
         this.dragStartState = null;
+        
+        // Navigation state for keyboard
+        this.navigationState = null;
 
         this.init();
     }
@@ -179,7 +182,7 @@ class MindMap {
         }
         return { 
             nodes: serializableNodes, 
-            selectedNodeId: this.selectedNodeId,
+            selectedNodeIds: [...this.selectedNodeIds],
             connectorStyle: this.connectorStyle 
         };
     }
@@ -208,11 +211,18 @@ class MindMap {
         }
 
         this.updateUIVisibilityAndConnectors();
-        if (state.selectedNodeId && this.nodes[state.selectedNodeId]) {
-            this.selectNode(state.selectedNodeId);
-        } else {
-            this.selectNode(null);
+        
+        this.clearSelection();
+        if (state.selectedNodeIds) {
+            state.selectedNodeIds.forEach(id => {
+                if (this.nodes[id]) {
+                    this.selectedNodeIds.push(id);
+                    this.nodes[id].element.classList.add('selected');
+                }
+            });
         }
+        this.updateToolbarButtons();
+
         this.updateMarkdownEditor();
         this.updateActiveConnectorStyleButton(this.connectorStyle);
     }
@@ -310,11 +320,12 @@ class MindMap {
     }
     
     addNodeForSelected() {
-        if (!this.selectedNodeId) return;
+        const parentId = this.getActiveNodeId();
+        if (!parentId) return;
 
         const stateBefore = this.getSerializableState();
 
-        const newNodeId = this.programmaticAddNode(this.selectedNodeId, 'شاخه جدید');
+        const newNodeId = this.programmaticAddNode(parentId, 'شاخه جدید');
         if(newNodeId) {
             this.selectNode(newNodeId);
             this.updateUIVisibilityAndConnectors();
@@ -326,28 +337,35 @@ class MindMap {
         }
     }
 
-    deleteNode(nodeId) {
-        if (!nodeId || nodeId === ROOT_NODE_ID) return;
+    deleteSelectedNodes() {
+        const idsToDelete = this.selectedNodeIds.filter(id => id !== ROOT_NODE_ID);
+        if (idsToDelete.length === 0) return;
 
         const stateBefore = this.getSerializableState();
         
-        const allIdsToDelete = [nodeId, ...this.getAllDescendantIds(nodeId)];
-        const nodeToDelete = this.nodes[nodeId];
-
+        const allIdsToDelete = new Set(idsToDelete);
+        idsToDelete.forEach(id => {
+            this.getAllDescendantIds(id).forEach(descId => allIdsToDelete.add(descId));
+        });
+        
+        let nextNodeToSelect = null;
+        const firstNodeData = this.nodes[idsToDelete[0]];
+        if (firstNodeData && firstNodeData.parentId && this.nodes[firstNodeData.parentId]) {
+            nextNodeToSelect = firstNodeData.parentId;
+        }
+        
         allIdsToDelete.forEach(id => {
             const node = this.nodes[id];
             if (node && node.element) node.element.remove();
             delete this.nodes[id];
         });
 
-        if (nodeToDelete.parentId && this.nodes[nodeToDelete.parentId]) {
-            const parent = this.nodes[nodeToDelete.parentId];
-            parent.childrenIds = parent.childrenIds.filter(childId => childId !== nodeId);
-        }
+        Object.values(this.nodes).forEach(node => {
+            node.childrenIds = node.childrenIds.filter(childId => !allIdsToDelete.has(childId));
+        });
 
-        if (allIdsToDelete.includes(this.selectedNodeId)) {
-            this.selectNode(nodeToDelete.parentId || null);
-        }
+        this.selectNode(nextNodeToSelect);
+        
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
         
@@ -590,7 +608,7 @@ class MindMap {
         this.nodes = {};
         this.nodesLayer.innerHTML = '';
         this.svgLayer.innerHTML = '';
-        this.selectedNodeId = null;
+        this.selectedNodeIds = [];
     }
 
     // --- UI and Rendering ---
@@ -716,9 +734,8 @@ class MindMap {
         nodeEl.appendChild(textSpan);
 
         nodeEl.addEventListener('mousedown', (e) => { e.stopPropagation(); this.handleDragStart(e, nodeId); });
-        nodeEl.addEventListener('dblclick', (e) => { e.stopPropagation(); this.makeNodeEditable(nodeId); });
-        nodeEl.addEventListener('click', (e) => { e.stopPropagation(); this.selectNode(nodeId); });
-
+        nodeEl.addEventListener('dblclick', (e) => { e.stopPropagation(); if (this.selectedNodeIds.length === 1) this.makeNodeEditable(nodeId); });
+        
         const collapseBtn = document.createElement('button');
         collapseBtn.className = 'collapse-btn';
         collapseBtn.setAttribute('aria-label', 'جمع/باز کردن گره');
@@ -811,11 +828,7 @@ class MindMap {
 
         // Toolbar buttons
         this.addNodeBtn.addEventListener('click', () => this.addNodeForSelected());
-        this.deleteNodeBtn.addEventListener('click', () => {
-            if (this.selectedNodeId) {
-                this.deleteNode(this.selectedNodeId);
-            }
-        });
+        this.deleteNodeBtn.addEventListener('click', () => this.deleteSelectedNodes());
         this.newMapBtn.addEventListener('click', () => this.createNewMap());
         this.saveMapBtn.addEventListener('click', () => this.saveCurrentMap());
         this.undoBtn.addEventListener('click', () => this.undo());
@@ -983,7 +996,14 @@ class MindMap {
             return;
         }
         
-        if (e.ctrlKey) {
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        if (isCtrl) {
+            if (e.code === 'KeyA') {
+                e.preventDefault();
+                this.selectAllNodes();
+                return;
+            }
             if (e.key === 's') {
                 e.preventDefault();
                 this.saveCurrentMap();
@@ -1000,51 +1020,191 @@ class MindMap {
                 return;
             }
         }
-
-        if (!this.selectedNodeId) return;
+        
+        const activeNodeId = this.getActiveNodeId();
+        if (!activeNodeId) return;
 
         switch (e.key) {
             case 'Tab':
                 e.preventDefault(); this.addNodeForSelected(); break;
             case 'F2':
-                e.preventDefault(); this.makeNodeEditable(this.selectedNodeId); break;
+                e.preventDefault(); 
+                if (this.selectedNodeIds.length === 1) {
+                    this.makeNodeEditable(activeNodeId);
+                }
+                break;
             case 'Delete':
-                e.preventDefault(); this.deleteNode(this.selectedNodeId); break;
+            case 'Backspace':
+                e.preventDefault(); this.deleteSelectedNodes(); break;
+            case 'ArrowUp':
+            case 'ArrowDown':
+                e.preventDefault();
+                this.navigateSibling(activeNodeId, e.key === 'ArrowDown');
+                break;
+            case 'ArrowLeft': // Deeper in hierarchy for RTL
+                e.preventDefault();
+                this.navigateChild(activeNodeId);
+                break;
+            case 'ArrowRight': // Shallower in hierarchy for RTL
+                e.preventDefault();
+                this.navigateParent(activeNodeId);
+                break;
         }
     }
     
-    selectNode(nodeId) {
-        if(nodeId && this.isAnyAncestorCollapsed(nodeId)) return;
-        if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
-            this.nodes[this.selectedNodeId].element.classList.remove('selected');
+    // --- Selection and Navigation ---
+
+    getActiveNodeId() {
+        return this.selectedNodeIds.length > 0 ? this.selectedNodeIds[this.selectedNodeIds.length - 1] : null;
+    }
+    
+    clearSelection() {
+        this.selectedNodeIds.forEach(id => {
+            this.nodes[id]?.element.classList.remove('selected');
+        });
+        this.selectedNodeIds = [];
+        this.navigationState = null;
+    }
+    
+    selectNode(nodeId, multiSelect = false) {
+        if (nodeId && this.isAnyAncestorCollapsed(nodeId)) return;
+
+        const previouslySelected = new Set(this.selectedNodeIds);
+
+        if (!multiSelect) {
+            this.clearSelection();
+            if (nodeId) {
+                this.selectedNodeIds = [nodeId];
+            }
+        } else {
+            if (previouslySelected.has(nodeId)) {
+                this.selectedNodeIds = this.selectedNodeIds.filter(id => id !== nodeId);
+            } else if (nodeId) {
+                this.selectedNodeIds.push(nodeId);
+            }
         }
-        this.selectedNodeId = nodeId;
-        if (this.selectedNodeId && this.nodes[this.selectedNodeId]) {
-            this.nodes[this.selectedNodeId].element.classList.add('selected');
-        }
+
+        // Apply 'selected' class to all currently selected nodes
+        this.selectedNodeIds.forEach(id => {
+            this.nodes[id]?.element.classList.add('selected');
+        });
+        
+        // Remove 'selected' from nodes that are no longer selected
+        previouslySelected.forEach(id => {
+            if(!this.selectedNodeIds.includes(id)) {
+                this.nodes[id]?.element.classList.remove('selected');
+            }
+        });
+
         this.updateToolbarButtons();
     }
+    
+    selectAllNodes() {
+        this.clearSelection();
+        this.selectedNodeIds = Object.keys(this.nodes).filter(id => !this.isAnyAncestorCollapsed(id));
+        this.selectedNodeIds.forEach(id => {
+            this.nodes[id]?.element.classList.add('selected');
+        });
+        this.updateToolbarButtons();
+        this.navigationState = null;
+    }
+
+    navigateParent(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node || !node.parentId) return;
+
+        this.selectNode(node.parentId);
+        this.navigationState = { lastNodeId: nodeId, direction: 'parent' };
+    }
+
+    navigateChild(nodeId) {
+        const node = this.nodes[nodeId];
+        if (!node) return;
+
+        const lastSelectedId = this.navigationState?.lastNodeId;
+        const lastDirection = this.navigationState?.direction;
+
+        // If we just arrived at the root by moving 'parent-ward', try to cross over
+        if (nodeId === ROOT_NODE_ID && lastDirection === 'parent' && this.nodes[lastSelectedId]) {
+            const lastNode = this.nodes[lastSelectedId];
+            const rootNode = this.nodes[ROOT_NODE_ID];
+            const wasOnLeft = lastNode.position.x < rootNode.position.x;
+            
+            const oppositeChildren = rootNode.childrenIds.filter(id => {
+                const childIsOnLeft = this.nodes[id].position.x < rootNode.position.x;
+                return wasOnLeft ? !childIsOnLeft : childIsOnLeft;
+            });
+
+            if (oppositeChildren.length > 0) {
+                oppositeChildren.sort((a, b) => this.nodes[a].position.y - this.nodes[b].position.y);
+                this.selectNode(oppositeChildren[0]);
+                this.navigationState = { lastNodeId: nodeId, direction: 'child' };
+                return;
+            }
+        }
+        
+        // Default behavior: go to first child
+        if (!node.isCollapsed && node.childrenIds.length > 0) {
+            const sortedChildren = [...node.childrenIds].sort((a,b) => this.nodes[a].position.y - this.nodes[b].position.y);
+            this.selectNode(sortedChildren[0]);
+            this.navigationState = { lastNodeId: nodeId, direction: 'child' };
+        }
+    }
+
+    navigateSibling(nodeId, goDown) {
+        const node = this.nodes[nodeId];
+        if (!node || !node.parentId) return;
+
+        const parent = this.nodes[node.parentId];
+        const visibleSiblings = parent.childrenIds.filter(id => !this.isAnyAncestorCollapsed(id));
+        if (visibleSiblings.length <= 1) return;
+
+        const sortedSiblings = visibleSiblings.sort((a, b) => {
+            return this.nodes[a].position.y - this.nodes[b].position.y;
+        });
+
+        const currentIndex = sortedSiblings.indexOf(nodeId);
+        let nextIndex = goDown ? currentIndex + 1 : currentIndex - 1;
+
+        if (nextIndex < 0) {
+            nextIndex = sortedSiblings.length - 1;
+        } else if (nextIndex >= sortedSiblings.length) {
+            nextIndex = 0;
+        }
+
+        this.selectNode(sortedSiblings[nextIndex]);
+        this.navigationState = null; // Reset nav state when moving between siblings
+    }
+
 
     updateToolbarButtons() {
-        const nothingSelected = !this.selectedNodeId;
-        const rootSelected = this.selectedNodeId === ROOT_NODE_ID;
+        const selectionCount = this.selectedNodeIds.length;
+        const hasSelection = selectionCount > 0;
+        const rootIsSelected = this.selectedNodeIds.includes(ROOT_NODE_ID);
     
-        this.addNodeBtn.disabled = nothingSelected;
-        this.deleteNodeBtn.disabled = nothingSelected || rootSelected;
-        this.nodeStyleButtons.forEach(btn => btn.disabled = nothingSelected);
+        this.addNodeBtn.disabled = !hasSelection;
+        this.deleteNodeBtn.disabled = !hasSelection;
+        this.nodeStyleButtons.forEach(btn => btn.disabled = !hasSelection);
     
-        if (nothingSelected) {
+        if (!hasSelection) {
             this.addNodeBtn.title = 'برای افزودن شاخه، یک گره را انتخاب کنید';
             this.deleteNodeBtn.title = 'برای حذف، یک گره را انتخاب کنید';
             this.updateActiveNodeStyleButton(null);
         } else {
-            this.addNodeBtn.title = 'افزودن شاخه به گره انتخاب‌شده';
-            if (rootSelected) {
+            this.addNodeBtn.title = 'افزودن شاخه به گره فعال';
+            if (rootIsSelected && selectionCount === 1) {
                 this.deleteNodeBtn.title = 'گره اصلی را نمی‌توان حذف کرد';
-            } else {
-                this.deleteNodeBtn.title = 'حذف گره انتخاب‌شده';
+                this.deleteNodeBtn.disabled = true;
+            } else if (rootIsSelected) {
+                this.deleteNodeBtn.title = 'حذف گره‌های انتخاب‌شده (به‌جز اصلی)';
+                this.deleteNodeBtn.disabled = false;
             }
-            const style = this.nodes[this.selectedNodeId]?.style || 'rect';
+             else {
+                this.deleteNodeBtn.title = 'حذف گره(های) انتخاب‌شده';
+                this.deleteNodeBtn.disabled = false;
+            }
+            const activeNode = this.nodes[this.getActiveNodeId()];
+            const style = activeNode?.style || 'rect';
             this.updateActiveNodeStyleButton(style);
         }
     }
@@ -1070,14 +1230,18 @@ class MindMap {
     }
 
     setNodeStyle(style) {
-        if (!this.selectedNodeId) return;
+        if (this.selectedNodeIds.length === 0) return;
         const stateBefore = this.getSerializableState();
 
-        const node = this.nodes[this.selectedNodeId];
-        const oldStyle = node.style || 'rect';
-        node.style = style;
-        node.element.classList.remove(`node-style-${oldStyle}`);
-        node.element.classList.add(`node-style-${style}`);
+        this.selectedNodeIds.forEach(nodeId => {
+            const node = this.nodes[nodeId];
+            if (node) {
+                const oldStyle = node.style || 'rect';
+                node.style = style;
+                node.element.classList.remove(`node-style-${oldStyle}`);
+                node.element.classList.add(`node-style-${style}`);
+            }
+        });
 
         this.updateActiveNodeStyleButton(style);
         this.pushHistoryState(stateBefore);
@@ -1113,8 +1277,16 @@ class MindMap {
         node.isCollapsed = !node.isCollapsed;
         if (node.isCollapsed) {
             const descendantIds = this.getAllDescendantIds(nodeId);
-            if (descendantIds.includes(this.selectedNodeId)) {
-                this.selectNode(nodeId);
+            const stillSelected = this.selectedNodeIds.filter(id => !descendantIds.includes(id));
+            
+            // If the only selected node was a descendant, select the collapsed node
+            if(this.selectedNodeIds.every(id => descendantIds.includes(id))) {
+                 this.selectNode(nodeId);
+            } else if (stillSelected.length !== this.selectedNodeIds.length) {
+                 // Reselect remaining nodes
+                 const currentSelection = [...stillSelected];
+                 this.clearSelection();
+                 currentSelection.forEach(id => this.selectNode(id, true));
             }
         }
         this.updateUIVisibilityAndConnectors();
@@ -1181,8 +1353,8 @@ class MindMap {
 
         // Adjust start point if parent has a style without a visible border
         if (parentNode.style === 'underline' || parentNode.style === 'none') {
-            if (parentNode.element) {
-                const parentOffset = (parentNode.element.offsetWidth / 2 / this.scale) + padding;
+            if (parentNode.element && parentNode.element.offsetWidth > 0) {
+                const parentOffset = (parentNode.element.offsetWidth / 2) + padding;
                 if (toPos.x > fromPos.x) { // Child is to the right
                     adjustedFromPos.x += parentOffset;
                 } else { // Child is to the left
@@ -1193,8 +1365,8 @@ class MindMap {
 
         // Adjust end point if child has a style without a visible border
         if (childNode.style === 'underline' || childNode.style === 'none') {
-            if (childNode.element) {
-                const childOffset = (childNode.element.offsetWidth / 2 / this.scale) + padding;
+            if (childNode.element && childNode.element.offsetWidth > 0) {
+                const childOffset = (childNode.element.offsetWidth / 2) + padding;
                 if (toPos.x > fromPos.x) { // Child is to the right
                     adjustedToPos.x -= childOffset;
                 } else { // Child is to the left
@@ -1226,8 +1398,9 @@ class MindMap {
     
     handleDragStart(e, nodeId) {
         if (e.button !== 0) return;
+        
         this.dragStartState = this.getSerializableState();
-        this.dragState = { isDraggingNode: true, nodeId: nodeId, lastMousePos: { x: e.clientX, y: e.clientY } };
+        this.dragState = { isDraggingNode: true, hasDragged: false, nodeId: nodeId, lastMousePos: { x: e.clientX, y: e.clientY } };
     }
 
     handlePanStart(e) {
@@ -1245,25 +1418,45 @@ class MindMap {
             this.updateTransform();
             this.panState.lastMousePos = { x: e.clientX, y: e.clientY };
         } else if (this.dragState.isDraggingNode) {
+            this.dragState.hasDragged = true;
             const dx = (e.clientX - this.dragState.lastMousePos.x) / this.scale;
             const dy = (e.clientY - this.dragState.lastMousePos.y) / this.scale;
-            this.moveNodeAndChildren(this.dragState.nodeId, { dx, dy });
+            
+            // If the dragged node is not selected, select it and clear others (if not multi-selecting)
+            const isCtrl = e.ctrlKey || e.metaKey;
+            if (!this.selectedNodeIds.includes(this.dragState.nodeId) && !isCtrl) {
+                this.selectNode(this.dragState.nodeId);
+            }
+            
+            this.selectedNodeIds.forEach(id => {
+                this.moveNodeAndChildren(id, { dx, dy }, this.selectedNodeIds);
+            });
+            
             this.dragState.lastMousePos = { x: e.clientX, y: e.clientY };
         }
     }
     
-    handleMouseUp() {
+    handleMouseUp(e) {
         if (this.panState.isPanning) {
             this.panState.isPanning = false; this.canvas.classList.remove('panning');
         }
         if (this.dragState.isDraggingNode) {
-            if(this.dragStartState) {
-                this.pushHistoryState(this.dragStartState);
-                this.dragStartState = null;
+            if (!this.dragState.hasDragged) { // This was a click, not a drag.
+                this.navigationState = null;
+                this.selectNode(this.dragState.nodeId, e.ctrlKey || e.metaKey);
+            } else { // This was a drag.
+                if(this.dragStartState) {
+                    const endState = JSON.stringify(this.getSerializableState().nodes);
+                    const startState = JSON.stringify(this.dragStartState.nodes);
+                    if(endState !== startState) {
+                        this.pushHistoryState(this.dragStartState);
+                    }
+                    this.dragStartState = null;
+                }
+                this.triggerAutoSave();
             }
             this.dragState.isDraggingNode = false; 
             this.dragState.nodeId = null;
-            this.triggerAutoSave();
         }
     }
 
@@ -1280,6 +1473,7 @@ class MindMap {
         this.pan.x = mousePoint.x - worldX * this.scale;
         this.pan.y = mousePoint.y - worldY * this.scale;
         this.updateTransform();
+        this.updateUIVisibilityAndConnectors(); // Redraw connectors after zoom
     }
     
     updateNodePosition(nodeId, position) {
@@ -1291,7 +1485,14 @@ class MindMap {
         }
     }
 
-    moveNodeAndChildren(rootNodeId, delta) {
+    moveNodeAndChildren(rootNodeId, delta, selectionGroup = []) {
+        const selectionSet = new Set(selectionGroup);
+        // We only move a node if its parent is NOT also in the selection group,
+        // unless it's the root node of the drag operation.
+        if (selectionSet.has(this.nodes[rootNodeId]?.parentId) && this.dragState.nodeId !== rootNodeId) {
+            return;
+        }
+    
         const idsToMove = [rootNodeId, ...this.getAllDescendantIds(rootNodeId)];
         idsToMove.forEach(id => {
             const node = this.nodes[id];
