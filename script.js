@@ -1,3 +1,4 @@
+
 const ROOT_NODE_ID = 'root';
 const DB_NAME = 'MindMapDB';
 const STORE_NAME = 'mindmaps';
@@ -835,6 +836,7 @@ class MindMap {
         this.filesTabBtn.addEventListener('click', () => this.switchTab('files'));
         this.editorTabBtn.addEventListener('click', () => this.switchTab('editor'));
         this.markdownEditor.addEventListener('input', () => this.updateMapFromMarkdownDebounced());
+        this.markdownEditor.addEventListener('keydown', this.handleEditorKeyDown.bind(this));
         
         // Modal
         this.modalCloseBtn.addEventListener('click', () => this.hideMapProperties());
@@ -851,6 +853,95 @@ class MindMap {
                  openMenu.classList.remove('open');
             }
         });
+    }
+
+    handleEditorKeyDown(e) {
+        const editor = e.target;
+        const { selectionStart, selectionEnd, value } = editor;
+
+        if (e.key === 'Tab') {
+            e.preventDefault();
+
+            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+            const endPosForLineSearch = (selectionEnd > lineStart && value[selectionEnd - 1] === '\n') ? selectionEnd - 1 : selectionEnd;
+            let lineEnd = value.indexOf('\n', endPosForLineSearch);
+            if (lineEnd === -1) {
+                lineEnd = value.length;
+            }
+
+            const textBefore = value.substring(0, lineStart);
+            const selectedLinesText = value.substring(lineStart, lineEnd);
+            const textAfter = value.substring(lineEnd);
+            
+            const lines = selectedLinesText.split('\n');
+            let newSelectedLinesText;
+            let startOffset = 0;
+            let endOffset = 0;
+
+            if (!e.shiftKey) { // Indent
+                newSelectedLinesText = lines.map(line => '  ' + line).join('\n');
+                startOffset = 2;
+                endOffset = 2 * lines.length;
+            } else { // Outdent
+                let firstLineCharsRemoved = 0;
+                let totalCharsRemoved = 0;
+                newSelectedLinesText = lines.map((line, index) => {
+                    if (line.startsWith('  ')) {
+                        if (index === 0) firstLineCharsRemoved = 2;
+                        totalCharsRemoved += 2;
+                        return line.substring(2);
+                    } else if (line.startsWith(' ')) {
+                        if (index === 0) firstLineCharsRemoved = 1;
+                        totalCharsRemoved += 1;
+                        return line.substring(1);
+                    }
+                    return line;
+                }).join('\n');
+                startOffset = -firstLineCharsRemoved;
+                endOffset = -totalCharsRemoved;
+            }
+
+            editor.value = textBefore + newSelectedLinesText + textAfter;
+            editor.selectionStart = selectionStart + startOffset;
+            editor.selectionEnd = selectionEnd + endOffset;
+
+            this.updateMapFromMarkdownDebounced();
+            return;
+        }
+
+        if (e.key === 'Enter') {
+            if (selectionStart !== selectionEnd) return;
+
+            e.preventDefault();
+            
+            const lineStartPos = value.lastIndexOf('\n', selectionStart - 1) + 1;
+            let lineEndPos = value.indexOf('\n', selectionStart);
+            if (lineEndPos === -1) lineEndPos = value.length;
+            
+            const currentLine = value.substring(lineStartPos, lineEndPos);
+            const indentMatch = currentLine.match(/^\s*/);
+            const indent = indentMatch ? indentMatch[0] : '';
+
+            // If current line is an empty list item (e.g., "  - "), outdent on Enter
+            if (/^\s*-\s*$/.test(currentLine)) {
+                const parentIndent = indent.length >= 2 ? indent.substring(0, indent.length - 2) : '';
+                const textBefore = value.substring(0, lineStartPos);
+                const textAfter = value.substring(lineEndPos);
+
+                editor.value = textBefore + parentIndent + textAfter;
+                editor.selectionStart = editor.selectionEnd = textBefore.length + parentIndent.length;
+            } else {
+                const newContent = `\n${indent}- `;
+                const textBefore = value.substring(0, selectionStart);
+                const textAfter = value.substring(selectionEnd);
+                
+                editor.value = textBefore + newContent + textAfter;
+                editor.selectionStart = editor.selectionEnd = selectionStart + newContent.length;
+            }
+
+            this.updateMapFromMarkdownDebounced();
+            return;
+        }
     }
 
     initInstructionsPanelState() {
