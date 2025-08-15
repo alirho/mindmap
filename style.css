@@ -74,9 +74,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 40px;
-    min-height: 15px;
-    padding: 1rem;
+    min-width: 30px;
+    min-height: 10px;
+    padding: 0.6rem 1rem;
     border: 2px solid var(--node-border);
     cursor: pointer;
     transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.2s;
@@ -93,7 +93,7 @@ body {
     background-color: var(--node-bg);
     border-radius: 999px; /* Pill shape */
     box-shadow: var(--node-shadow);
-    padding: 0.8rem 1.5rem;
+    padding: 0.5rem 1.2rem;
 }
 
 .mindmap-node.node-style-underline {
@@ -102,8 +102,8 @@ body {
     box-shadow: none;
     border-bottom: 2px solid var(--connector-stroke);
     border-radius: 0;
-    padding-top: 1rem;
-    padding-bottom: 0.5rem;
+    padding-top: 0.6rem;
+    padding-bottom: 0.4rem;
 }
 
 .mindmap-node.node-style-none {
@@ -270,7 +270,7 @@ body {
 #close-instructions-btn {
     position: absolute;
     top: 0.25rem;
-    right: 0.25rem;
+    left: 0.25rem;
     background: none;
     border: none;
     font-size: 1.5rem;

@@ -256,24 +256,52 @@ class MindMap {
         if (!parentId || !this.nodes[parentId]) return null;
         const parentNode = this.nodes[parentId];
         
-        const offsetX = 250;
-        const baseOffsetY = 80;
-        const siblingOffsetY = 120;
+        const offsetX = 200;
+        const baseOffsetY = 60;
+        const siblingOffsetY = 100;
         let newPosition;
-
+    
+        const moveFirstChild = (firstChildId, newOffsetY) => {
+            const firstChild = this.nodes[firstChildId];
+            if (!firstChild) return;
+            const delta = { dx: 0, dy: (parentNode.position.y + newOffsetY) - firstChild.position.y };
+            this.moveNodeAndChildren(firstChildId, delta);
+        };
+    
         if (parentNode.id === ROOT_NODE_ID) {
-            const childrenOnLeft = parentNode.childrenIds.filter(id => this.nodes[id].position.x < parentNode.position.x).length;
-            const childrenOnRight = parentNode.childrenIds.filter(id => this.nodes[id].position.x > parentNode.position.x).length;
-            const addOnLeft = childrenOnLeft <= childrenOnRight;
+            const childrenOnLeftIds = parentNode.childrenIds.filter(id => this.nodes[id].position.x < parentNode.position.x);
+            const childrenOnRightIds = parentNode.childrenIds.filter(id => this.nodes[id].position.x > parentNode.position.x);
+            
+            const addOnLeft = childrenOnLeftIds.length <= childrenOnRightIds.length;
             const direction = addOnLeft ? -1 : 1;
-            const countOnSide = addOnLeft ? childrenOnLeft : childrenOnRight;
-            const offsetY = (countOnSide % 2 === 0 ? 1 : -1) * (Math.floor(countOnSide / 2) * siblingOffsetY + baseOffsetY);
+            const childrenOnSide = addOnLeft ? childrenOnLeftIds : childrenOnRightIds;
+            const countOnSide = childrenOnSide.length;
+    
+            let offsetY;
+            if (countOnSide === 0) {
+                offsetY = 0;
+            } else if (countOnSide === 1) {
+                moveFirstChild(childrenOnSide[0], -baseOffsetY);
+                offsetY = baseOffsetY;
+            } else {
+                offsetY = (countOnSide % 2 === 0 ? 1 : -1) * (Math.floor(countOnSide / 2) * siblingOffsetY + baseOffsetY);
+            }
             newPosition = { x: parentNode.position.x + (direction * offsetX), y: parentNode.position.y + offsetY };
+    
         } else {
             const rootNode = this.nodes[ROOT_NODE_ID];
             const direction = (parentNode.position.x < rootNode.position.x) ? -1 : 1;
             const childCount = parentNode.childrenIds.length;
-            const offsetY = (childCount % 2 === 0 ? 1 : -1) * (Math.floor(childCount / 2) * siblingOffsetY + baseOffsetY);
+            
+            let offsetY;
+            if (childCount === 0) {
+                offsetY = 0;
+            } else if (childCount === 1) {
+                moveFirstChild(parentNode.childrenIds[0], -baseOffsetY);
+                offsetY = baseOffsetY;
+            } else {
+                offsetY = (childCount % 2 === 0 ? 1 : -1) * (Math.floor(childCount / 2) * siblingOffsetY + baseOffsetY);
+            }
             newPosition = { x: parentNode.position.x + (direction * offsetX), y: parentNode.position.y + offsetY };
         }
         return this.createNode(text, parentId, newPosition, style);
