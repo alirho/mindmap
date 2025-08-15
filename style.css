@@ -4,6 +4,7 @@
     --node-bg: #f1f5f9;
     --node-border: transparent;
     --node-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --selected-bg: #e0f2fe;
     --selected-border: #3b82f6;
     --selected-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     --connector-stroke: #94a3b8;
@@ -101,7 +102,7 @@ body {
     border: none;
     box-shadow: none;
     border-bottom: 2px solid var(--connector-stroke);
-    border-radius: 0;
+    border-radius: 0.5rem 0.5rem 0 0; /* Add radius for selected state */
     padding-top: 0.6rem;
     padding-bottom: 0.4rem;
 }
@@ -110,6 +111,8 @@ body {
     background: transparent;
     border: none;
     box-shadow: none;
+    /* افزودن شعاع برای زیبایی پس‌زمینه در حالت انتخاب */
+    border-radius: 0.5rem;
 }
 
 
@@ -120,10 +123,23 @@ body {
 .mindmap-node.selected {
     transform: translate(-50%, -50%) scale(1.05);
 }
-.mindmap-node.selected:not(.node-style-underline):not(.node-style-none) {
+
+/* استایل انتخاب برای گره‌های دارای پس‌زمینه */
+.mindmap-node.selected.node-style-rect,
+.mindmap-node.selected.node-style-ellipse,
+.mindmap-node.selected.node-style-none,
+.mindmap-node.selected.node-style-underline {
+    background-color: var(--selected-bg);
+}
+
+/* استایل انتخاب برای گره‌های دارای حاشیه */
+.mindmap-node.selected.node-style-rect,
+.mindmap-node.selected.node-style-ellipse {
     border-color: var(--selected-border);
     box-shadow: var(--selected-shadow);
 }
+
+/* استایل انتخاب برای گره‌های خط‌دار */
 .mindmap-node.selected.node-style-underline {
     border-bottom-color: var(--selected-border);
 }
@@ -147,16 +163,16 @@ body {
 
 .collapse-btn {
     position: absolute;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 0.75rem;
+    height: 0.75rem;
     background-color: var(--collapse-btn-bg);
     color: white;
-    border: 2px solid var(--bg-color);
+    border: 1px solid var(--bg-color);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
+    font-size: 0.8rem;
     line-height: 1;
     font-weight: bold;
     cursor: pointer;
@@ -342,18 +358,22 @@ body {
 #panel-toggle-btn {
     position: absolute;
     top: 1rem;
-    right: calc(100% + 0.5rem);
+    right: 100%;
     z-index: 30;
     width: 2.5rem;
     height: 2.5rem;
     font-size: 1.5rem;
-    border-radius: 50%;
+    border-radius: 0.5rem 0 0 0.5rem;
     border: 1px solid var(--info-border);
+    border-right: none;
     background-color: var(--info-bg);
     color: var(--info-text);
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease;
+    box-shadow: -2px 1px 4px rgba(0,0,0,0.08);
+    transition: background-color 0.2s ease;
+}
+#panel-toggle-btn:hover {
+    background-color: #e2e8f0;
 }
 
 #side-panel {

@@ -128,7 +128,7 @@ class MindMap {
         this.connectorStyle = 'straight';
 
         this.dragState = { isDraggingNode: false, hasDragged: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
-        this.panState = { isPanning: false, lastMousePos: { x: 0, y: 0 } };
+        this.panState = { isPanning: false, hasPanned: false, lastMousePos: { x: 0, y: 0 } };
         
         // Auto-save & Editor state
         this.autoSaveTimer = null;
@@ -449,9 +449,7 @@ class MindMap {
         this.updateUndoRedoButtons();
         
         await this.renderSavedMapsList();
-        if(this.sidePanel.classList.contains('open')) {
-            this.panelToggleBtn.click();
-        }
+
         this.saveMapBtn.title = 'ذخیره نقشه فعلی';
         this.saveMapBtn.disabled = true;
     }
@@ -1311,11 +1309,11 @@ class MindMap {
                     const allToTheLeft = childPositionsX.every(x => x < node.position.x);
                     Object.assign(collapseBtn.style, { left: '', right: '', top: '', bottom: '', transform: '' });
                     if (allToTheRight) {
-                        collapseBtn.style.right = '-0.75rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
+                        collapseBtn.style.right = '-0.375rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
                     } else if (allToTheLeft) {
-                        collapseBtn.style.left = '-0.75rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
+                        collapseBtn.style.left = '-0.375rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
                     } else {
-                        collapseBtn.style.left = '50%'; collapseBtn.style.bottom = '-0.75rem'; collapseBtn.style.transform = 'translateX(-50%)';
+                        collapseBtn.style.left = '50%'; collapseBtn.style.bottom = '-0.375rem'; collapseBtn.style.transform = 'translateX(-50%)';
                     }
                 } else {
                     collapseBtn.style.display = 'none';
@@ -1406,12 +1404,13 @@ class MindMap {
     handlePanStart(e) {
         if (e.target.closest('.mindmap-node') || e.target.closest('#markdown-editor') || e.button !== 0) return;
         e.preventDefault();
-        this.panState = { isPanning: true, lastMousePos: { x: e.clientX, y: e.clientY } };
+        this.panState = { isPanning: true, hasPanned: false, lastMousePos: { x: e.clientX, y: e.clientY } };
         this.canvas.classList.add('panning');
     }
     
     handleMouseMove(e) {
         if (this.panState.isPanning) {
+            this.panState.hasPanned = true;
             const dx = e.clientX - this.panState.lastMousePos.x;
             const dy = e.clientY - this.panState.lastMousePos.y;
             this.pan.x += dx; this.pan.y += dy;
@@ -1438,7 +1437,12 @@ class MindMap {
     
     handleMouseUp(e) {
         if (this.panState.isPanning) {
-            this.panState.isPanning = false; this.canvas.classList.remove('panning');
+            if (!this.panState.hasPanned) { // This was a click, not a pan.
+                this.clearSelection();
+                this.updateToolbarButtons();
+            }
+            this.panState.isPanning = false; 
+            this.canvas.classList.remove('panning');
         }
         if (this.dragState.isDraggingNode) {
             if (!this.dragState.hasDragged) { // This was a click, not a drag.
