@@ -1,4 +1,5 @@
 
+
 const ROOT_NODE_ID = 'root';
 const DB_NAME = 'MindMapDB';
 const STORE_NAME = 'mindmaps';
@@ -1082,6 +1083,7 @@ class MindMap {
         this.pushHistoryState(stateBefore);
         this.triggerAutoSave();
         this.updateMarkdownEditor();
+        this.updateUIVisibilityAndConnectors(); // Redraw connectors on style change
     }
 
     setConnectorStyle(style) {
@@ -1150,7 +1152,7 @@ class MindMap {
             const isVisible = !this.isAnyAncestorCollapsed(node.id);
             node.element.style.display = isVisible ? 'flex' : 'none';
             if (isVisible && node.parentId && this.nodes[node.parentId]) {
-                this.drawConnector(this.nodes[node.parentId].position, node.position);
+                this.drawConnector(this.nodes[node.parentId], node);
             }
         });
     }
@@ -1169,22 +1171,53 @@ class MindMap {
         return `M ${from.x},${from.y} L ${midX},${from.y} L ${midX},${to.y} L ${to.x},${to.y}`;
     }
 
-    drawConnector(fromPos, toPos) {
+    drawConnector(parentNode, childNode) {
+        const fromPos = parentNode.position;
+        const toPos = childNode.position;
+
+        let adjustedFromPos = { ...fromPos };
+        let adjustedToPos = { ...toPos };
+        const padding = 5; 
+
+        // Adjust start point if parent has a style without a visible border
+        if (parentNode.style === 'underline' || parentNode.style === 'none') {
+            if (parentNode.element) {
+                const parentOffset = (parentNode.element.offsetWidth / 2 / this.scale) + padding;
+                if (toPos.x > fromPos.x) { // Child is to the right
+                    adjustedFromPos.x += parentOffset;
+                } else { // Child is to the left
+                    adjustedFromPos.x -= parentOffset;
+                }
+            }
+        }
+
+        // Adjust end point if child has a style without a visible border
+        if (childNode.style === 'underline' || childNode.style === 'none') {
+            if (childNode.element) {
+                const childOffset = (childNode.element.offsetWidth / 2 / this.scale) + padding;
+                if (toPos.x > fromPos.x) { // Child is to the right
+                    adjustedToPos.x -= childOffset;
+                } else { // Child is to the left
+                    adjustedToPos.x += childOffset;
+                }
+            }
+        }
+        
         let connectorEl;
         switch (this.connectorStyle) {
             case 'curved':
                 connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                connectorEl.setAttribute('d', this.getCurvedPathData(fromPos, toPos));
+                connectorEl.setAttribute('d', this.getCurvedPathData(adjustedFromPos, adjustedToPos));
                 break;
             case 'stepped':
                 connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                connectorEl.setAttribute('d', this.getSteppedPathData(fromPos, toPos));
+                connectorEl.setAttribute('d', this.getSteppedPathData(adjustedFromPos, adjustedToPos));
                 break;
             case 'straight':
             default:
                 connectorEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                connectorEl.setAttribute('x1', fromPos.x); connectorEl.setAttribute('y1', fromPos.y);
-                connectorEl.setAttribute('x2', toPos.x); connectorEl.setAttribute('y2', toPos.y);
+                connectorEl.setAttribute('x1', adjustedFromPos.x); connectorEl.setAttribute('y1', adjustedFromPos.y);
+                connectorEl.setAttribute('x2', adjustedToPos.x); connectorEl.setAttribute('y2', adjustedToPos.y);
                 break;
         }
         connectorEl.setAttribute('class', 'connector-line');
