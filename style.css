@@ -74,9 +74,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 30px;
+    min-width: 20px;
     min-height: 10px;
-    padding: 0.6rem 1rem;
+    padding: 0.4rem 0.8rem;
     border: 2px solid var(--node-border);
     cursor: pointer;
     transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.2s;
@@ -93,7 +93,7 @@ body {
     background-color: var(--node-bg);
     border-radius: 999px; /* Pill shape */
     box-shadow: var(--node-shadow);
-    padding: 0.5rem 1.2rem;
+    padding: 0.3rem 1rem;
 }
 
 .mindmap-node.node-style-underline {
@@ -342,7 +342,7 @@ body {
 #panel-toggle-btn {
     position: absolute;
     top: 1rem;
-    right: 1rem;
+    right: calc(100% + 0.5rem);
     z-index: 30;
     width: 2.5rem;
     height: 2.5rem;
@@ -359,21 +359,20 @@ body {
 #side-panel {
     position: absolute;
     top: 0;
-    right: 0;
+    right: calc(-1 * var(--panel-width));
     width: var(--panel-width);
     height: 100vh;
     background-color: var(--panel-bg);
     border-right: 1px solid var(--panel-border);
     box-shadow: -2px 0 8px rgba(0,0,0,0.1);
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
+    transition: right 0.3s ease;
     z-index: 25;
     display: flex;
     flex-direction: column;
 }
 
 #side-panel.open {
-    transform: translateX(0);
+    right: 0;
 }
 
 #side-panel .panel-header {
@@ -532,8 +531,8 @@ body {
     color: var(--text-color);
     outline: none;
     box-sizing: border-box;
-    direction: ltr;
-    text-align: left;
+    direction: rtl;
+    text-align: right;
 }
 
 

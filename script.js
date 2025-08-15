@@ -256,9 +256,9 @@ class MindMap {
         if (!parentId || !this.nodes[parentId]) return null;
         const parentNode = this.nodes[parentId];
         
-        const offsetX = 200;
-        const baseOffsetY = 60;
-        const siblingOffsetY = 100;
+        const offsetX = 160;
+        const baseOffsetY = 40;
+        const siblingOffsetY = 80;
         let newPosition;
     
         const moveFirstChild = (firstChildId, newOffsetY) => {
@@ -480,24 +480,24 @@ class MindMap {
         URL.revokeObjectURL(url);
     }
     
-    exportToMarkdown() {
-        const buildMarkdownRecursive = (nodeId, depth) => {
+    exportToMarkdown(excludeStyles = false) {
+        const buildMarkdownRecursive = (nodeId, depth, exclude) => {
             const node = this.nodes[nodeId];
             if (!node) return '';
             const indent = '  '.repeat(depth);
             let textPart = `- ${node.text}`;
-            if (node.style && node.style !== 'rect') {
+            if (!exclude && node.style && node.style !== 'rect') {
                 textPart += ` {style:${node.style}}`;
             }
             let result = `${indent}${textPart}\n`;
             if (!node.isCollapsed) {
                 node.childrenIds.forEach(childId => {
-                    result += buildMarkdownRecursive(childId, depth + 1);
+                    result += buildMarkdownRecursive(childId, depth + 1, exclude);
                 });
             }
             return result;
         };
-        return buildMarkdownRecursive(ROOT_NODE_ID, 0);
+        return buildMarkdownRecursive(ROOT_NODE_ID, 0, excludeStyles);
     }
     
     exportToMarkdownFromData(markdown, newRootText) {
@@ -661,7 +661,7 @@ class MindMap {
 
     updateMarkdownEditor() {
         if (!this.nodes[ROOT_NODE_ID]) return;
-        const markdown = this.exportToMarkdown();
+        const markdown = this.exportToMarkdown(true); // Exclude styles for editor
         if (this.markdownEditor.value !== markdown) {
             this.markdownEditor.value = markdown;
         }
@@ -669,8 +669,8 @@ class MindMap {
     
     updateMapFromMarkdown() {
         const newMarkdown = this.markdownEditor.value;
-        const currentMarkdown = this.exportToMarkdown();
-        if (newMarkdown === currentMarkdown) {
+        const currentMarkdownForEditor = this.exportToMarkdown(true);
+        if (newMarkdown === currentMarkdownForEditor) {
             return;
         }
 
