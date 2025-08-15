@@ -114,11 +114,11 @@ class MindMap {
         this.markdownEditor = document.getElementById('markdown-editor');
 
         // Modal elements
-        this.propertiesModalOverlay = document.getElementById('properties-modal-overlay');
+        this.modalOverlay = document.getElementById('modal-overlay');
+        this.modalTitle = document.getElementById('modal-title');
+        this.modalBody = document.getElementById('modal-body');
+        this.modalFooter = document.getElementById('modal-footer');
         this.modalCloseBtn = document.getElementById('modal-close-btn');
-        this.propMapName = document.getElementById('prop-map-name');
-        this.propMapCreated = document.getElementById('prop-map-created');
-        this.propMapModified = document.getElementById('prop-map-modified');
 
         // State Management
         this.nodes = {};
@@ -459,7 +459,17 @@ class MindMap {
     async deleteMap(mapId) {
         const map = await this.db.get(mapId);
         if(!map) return;
-        if (!confirm(`آیا از حذف نقشه "${map.name}" مطمئن هستید؟`)) return;
+        
+        const confirmed = await this._showModal({
+            title: 'حذف نقشه',
+            body: `<p>آیا از حذف نقشه <strong>"${map.name}"</strong> مطمئن هستید؟ این عمل قابل بازگشت نیست.</p>`,
+            buttons: [
+                { text: 'حذف', class: 'danger', value: true },
+                { text: 'انصراف', class: 'default', value: false }
+            ]
+        });
+
+        if (!confirmed) return;
 
         await this.db.delete(mapId);
         if (this.currentMapId === mapId) {
@@ -471,7 +481,16 @@ class MindMap {
     async renameMap(mapId) {
         const map = await this.db.get(mapId);
         if(!map) return;
-        const newName = prompt("نام جدید نقشه را وارد کنید:", map.name);
+
+        const newName = await this._showModal({
+            title: 'تغییر نام نقشه',
+            body: `<input type="text" id="modal-input" class="modal-input" value="${map.name}" placeholder="نام جدید نقشه را وارد کنید" required>`,
+            buttons: [
+                { text: 'ذخیره', class: 'primary', value: 'resolve' },
+                { text: 'انصراف', class: 'default', value: false }
+            ]
+        });
+
         if (newName && newName.trim() !== '') {
             if(map.id === this.currentMapId) {
                 const stateBefore = this.getSerializableState();
@@ -500,7 +519,7 @@ class MindMap {
         URL.revokeObjectURL(url);
     }
     
-    handleFileUpload(event) {
+    async handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) {
             return;
@@ -512,7 +531,11 @@ class MindMap {
 
             const lines = content.split('\n').filter(line => line.trim() !== '');
             if (lines.length === 0 || !lines[0].trim().startsWith('- ')) {
-                alert('قالب فایل مارک‌داون نامعتبر است یا فایل خالی می‌باشد.');
+                await this._showModal({
+                    title: 'قالب نامعتبر',
+                    body: '<p>قالب فایل مارک‌داون نامعتبر است یا فایل خالی می‌باشد.</p>',
+                    buttons: [{ text: 'متوجه شدم', class: 'primary', value: true }]
+                });
                 this.uploadInput.value = ''; // Reset for re-upload
                 return;
             }
@@ -543,8 +566,12 @@ class MindMap {
             this.uploadInput.value = '';
         };
 
-        reader.onerror = () => {
-            alert('خطا در خواندن فایل.');
+        reader.onerror = async () => {
+             await this._showModal({
+                title: 'خطا',
+                body: '<p>خطا در خواندن فایل.</p>',
+                buttons: [{ text: 'متوجه شدم', class: 'primary', value: true }]
+            });
             this.uploadInput.value = '';
         };
         
@@ -695,7 +722,6 @@ class MindMap {
             
             li.querySelector('.map-info').addEventListener('click', () => {
                 this.loadMap(map.id);
-                // this.sidePanel.classList.remove('open');
             });
             
             const menuToggle = li.querySelector('.menu-toggle-btn');
@@ -722,15 +748,17 @@ class MindMap {
         const map = await this.db.get(mapId);
         if (!map) return;
 
-        this.propMapName.textContent = map.name;
-        this.propMapCreated.textContent = new Date(map.createdAt || map.modifiedAt).toLocaleString('fa-IR');
-        this.propMapModified.textContent = new Date(map.modifiedAt).toLocaleString('fa-IR');
+        const body = `
+            <p><strong>نام:</strong> <span>${map.name}</span></p>
+            <p><strong>تاریخ ایجاد:</strong> <span>${new Date(map.createdAt || map.modifiedAt).toLocaleString('fa-IR')}</span></p>
+            <p><strong>آخرین ویرایش:</strong> <span>${new Date(map.modifiedAt).toLocaleString('fa-IR')}</span></p>
+        `;
 
-        this.propertiesModalOverlay.style.display = 'flex';
-    }
-
-    hideMapProperties() {
-        this.propertiesModalOverlay.style.display = 'none';
+        await this._showModal({
+            title: 'ویژگی‌های نقشه',
+            body: body,
+            buttons: [{ text: 'بستن', class: 'primary', value: true }]
+        });
     }
 
     updateMarkdownEditor() {
@@ -908,14 +936,6 @@ class MindMap {
         this.markdownEditor.addEventListener('input', () => this.updateMapFromMarkdownDebounced());
         this.markdownEditor.addEventListener('keydown', this.handleEditorKeyDown.bind(this));
         
-        // Modal
-        this.modalCloseBtn.addEventListener('click', () => this.hideMapProperties());
-        this.propertiesModalOverlay.addEventListener('click', (e) => {
-            if (e.target === this.propertiesModalOverlay) {
-                this.hideMapProperties();
-            }
-        });
-        
         // Close open menus when clicking elsewhere
         document.addEventListener('click', (e) => {
             const openMenu = document.querySelector('.map-item-menu.open');
@@ -1047,8 +1067,7 @@ class MindMap {
     }
 
     handleKeyDown(e) {
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.querySelector('#properties-modal-overlay[style*="display: flex"]')) {
-            if (e.key === 'Escape') this.hideMapProperties();
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.querySelector('#modal-overlay[style*="display: flex"]')) {
             return;
         }
         
@@ -1457,7 +1476,6 @@ class MindMap {
     handleDragStart(e, nodeId) {
         if (e.button !== 0) return;
         
-        // Don't start a drag if the click is on an input field
         if (e.target.tagName === 'INPUT') return;
         
         this.dragStartState = this.getSerializableState();
@@ -1587,6 +1605,83 @@ class MindMap {
         }
         return false;
     }
+    
+    _hideModal() {
+        this.modalOverlay.style.display = 'none';
+        this.modalTitle.innerHTML = '';
+        this.modalBody.innerHTML = '';
+        this.modalFooter.innerHTML = '';
+    }
+
+    _showModal(options) {
+        return new Promise((resolve) => {
+            const { title, body, buttons } = options;
+
+            this.modalTitle.textContent = title;
+            this.modalBody.innerHTML = body;
+            this.modalFooter.innerHTML = ''; // Clear previous buttons
+
+            const handleResolve = (value) => {
+                cleanup();
+                resolve(value);
+            };
+
+            const handleCancel = () => {
+                cleanup();
+                resolve(false); // Resolve with a falsy value for cancellations
+            };
+            
+            buttons.forEach(btnConfig => {
+                const button = document.createElement('button');
+                button.textContent = btnConfig.text;
+                button.className = `modal-btn ${btnConfig.class || 'default'}`;
+                button.addEventListener('click', () => {
+                    if (btnConfig.value === 'resolve') {
+                        const input = this.modalBody.querySelector('#modal-input');
+                        handleResolve(input ? input.value : true);
+                    } else {
+                        handleResolve(btnConfig.value);
+                    }
+                });
+                this.modalFooter.appendChild(button);
+            });
+            
+            const onKeyDown = (e) => {
+                if(e.key === 'Enter') {
+                    const primaryBtn = this.modalFooter.querySelector('.primary');
+                    if (primaryBtn) primaryBtn.click();
+                } else if(e.key === 'Escape') {
+                    handleCancel();
+                }
+            };
+
+            const onOverlayClick = (e) => {
+                if (e.target === this.modalOverlay) {
+                    handleCancel();
+                }
+            };
+
+            const cleanup = () => {
+                this.modalCloseBtn.removeEventListener('click', handleCancel);
+                this.modalOverlay.removeEventListener('click', onOverlayClick);
+                document.removeEventListener('keydown', onKeyDown, true);
+                this._hideModal();
+            };
+
+            this.modalCloseBtn.addEventListener('click', handleCancel);
+            this.modalOverlay.addEventListener('click', onOverlayClick);
+            document.addEventListener('keydown', onKeyDown, true);
+
+            this.modalOverlay.style.display = 'flex';
+
+            const input = this.modalBody.querySelector('#modal-input');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        });
+    }
+
 }
 
 document.addEventListener('DOMContentLoaded', () => {

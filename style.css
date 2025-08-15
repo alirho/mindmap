@@ -557,7 +557,7 @@ body {
 
 
 /* Modal Styles */
-#properties-modal-overlay {
+#modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -571,7 +571,7 @@ body {
     backdrop-filter: blur(4px);
 }
 
-#properties-modal {
+#modal-container {
     background-color: var(--bg-color);
     border-radius: 0.75rem;
     box-shadow: var(--selected-shadow);
@@ -579,6 +579,8 @@ body {
     max-width: 450px;
     z-index: 101;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
@@ -609,16 +611,82 @@ body {
 
 .modal-body {
     padding: 1.5rem;
+    line-height: 1.6;
 }
 .modal-body p {
     margin: 0 0 1rem;
-    font-size: 1rem;
-    display: flex;
-    justify-content: space-between;
 }
 .modal-body p:last-child {
     margin-bottom: 0;
 }
 .modal-body strong {
     color: #475569;
+}
+.modal-body span {
+    color: var(--text-color);
+}
+
+.modal-body .modal-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 0.5rem;
+    font-family: inherit;
+    font-size: 1rem;
+    box-sizing: border-box;
+    margin-top: 0.5rem;
+}
+
+.modal-body .modal-input:focus {
+    outline: none;
+    border-color: var(--selected-border);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    background-color: #f8fafc;
+    border-top: 1px solid var(--panel-border);
+}
+
+.modal-btn {
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 0.5rem;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.modal-btn.primary {
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border-color: var(--button-bg);
+}
+.modal-btn.primary:hover {
+    background-color: var(--button-active-bg);
+    border-color: var(--button-active-bg);
+}
+
+.modal-btn.danger {
+    background-color: #ef4444;
+    color: white;
+    border-color: #ef4444;
+}
+.modal-btn.danger:hover {
+    background-color: #dc2626;
+    border-color: #dc2626;
+}
+
+.modal-btn.default {
+    background-color: white;
+    color: var(--text-color);
+}
+.modal-btn.default:hover {
+    background-color: #f1f5f9;
 }
