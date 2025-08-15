@@ -89,6 +89,8 @@ class MindMap {
         this.deleteNodeBtn = document.getElementById('delete-node-btn');
         this.newMapBtn = document.getElementById('new-map-btn');
         this.saveMapBtn = document.getElementById('save-map-btn');
+        this.uploadMapBtn = document.getElementById('upload-map-btn');
+        this.uploadInput = document.getElementById('upload-input');
         this.undoBtn = document.getElementById('undo-btn');
         this.redoBtn = document.getElementById('redo-btn');
         this.sidePanel = document.getElementById('side-panel');
@@ -498,6 +500,57 @@ class MindMap {
         URL.revokeObjectURL(url);
     }
     
+    handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) {
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const content = e.target.result;
+
+            const lines = content.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0 || !lines[0].trim().startsWith('- ')) {
+                alert('قالب فایل مارک‌داون نامعتبر است یا فایل خالی می‌باشد.');
+                this.uploadInput.value = ''; // Reset for re-upload
+                return;
+            }
+
+            clearTimeout(this.autoSaveTimer);
+            this.isDirty = false;
+            this.clearCanvas();
+            this.currentMapId = null;
+            this.connectorStyle = 'straight';
+            this.updateActiveConnectorStyleButton(this.connectorStyle);
+
+            this.importFromMarkdown(content);
+
+            this.updateUIVisibilityAndConnectors();
+            this.updateMarkdownEditor();
+            this.selectNode(ROOT_NODE_ID);
+            
+            this.undoStack = [];
+            this.redoStack = [];
+            this.updateUndoRedoButtons();
+            
+            this.updateToolbarButtons();
+            this.saveMapBtn.title = 'ذخیره نقشه فعلی';
+            this.saveMapBtn.disabled = false;
+            this.isDirty = true;
+            await this.renderSavedMapsList();
+            
+            this.uploadInput.value = '';
+        };
+
+        reader.onerror = () => {
+            alert('خطا در خواندن فایل.');
+            this.uploadInput.value = '';
+        };
+        
+        reader.readAsText(file);
+    }
+
     exportToMarkdown(excludeStyles = false) {
         const buildMarkdownRecursive = (nodeId, depth, exclude) => {
             const node = this.nodes[nodeId];
@@ -640,7 +693,10 @@ class MindMap {
                 </div>
             `;
             
-            li.querySelector('.map-info').addEventListener('click', () => this.loadMap(map.id));
+            li.querySelector('.map-info').addEventListener('click', () => {
+                this.loadMap(map.id);
+                // this.sidePanel.classList.remove('open');
+            });
             
             const menuToggle = li.querySelector('.menu-toggle-btn');
             const menu = li.querySelector('.map-item-menu');
@@ -829,6 +885,8 @@ class MindMap {
         this.deleteNodeBtn.addEventListener('click', () => this.deleteSelectedNodes());
         this.newMapBtn.addEventListener('click', () => this.createNewMap());
         this.saveMapBtn.addEventListener('click', () => this.saveCurrentMap());
+        this.uploadMapBtn.addEventListener('click', () => this.uploadInput.click());
+        this.uploadInput.addEventListener('change', (e) => this.handleFileUpload(e));
         this.undoBtn.addEventListener('click', () => this.undo());
         this.redoBtn.addEventListener('click', () => this.redo());
 
@@ -997,7 +1055,7 @@ class MindMap {
         const isCtrl = e.ctrlKey || e.metaKey;
 
         if (isCtrl) {
-            if (e.code === 'KeyA') {
+            if (e.code === 'KeyA' || e.key === 'ф') { // 'ф' is 'a' in Persian layout
                 e.preventDefault();
                 this.selectAllNodes();
                 return;
@@ -1039,11 +1097,11 @@ class MindMap {
                 e.preventDefault();
                 this.navigateSibling(activeNodeId, e.key === 'ArrowDown');
                 break;
-            case 'ArrowLeft': // Deeper in hierarchy for RTL
+            case 'ArrowLeft': // Shallower in hierarchy for RTL (to children)
                 e.preventDefault();
                 this.navigateChild(activeNodeId);
                 break;
-            case 'ArrowRight': // Shallower in hierarchy for RTL
+            case 'ArrowRight': // Deeper in hierarchy for RTL (to parent)
                 e.preventDefault();
                 this.navigateParent(activeNodeId);
                 break;
@@ -1122,7 +1180,6 @@ class MindMap {
         const lastSelectedId = this.navigationState?.lastNodeId;
         const lastDirection = this.navigationState?.direction;
 
-        // If we just arrived at the root by moving 'parent-ward', try to cross over
         if (nodeId === ROOT_NODE_ID && lastDirection === 'parent' && this.nodes[lastSelectedId]) {
             const lastNode = this.nodes[lastSelectedId];
             const rootNode = this.nodes[ROOT_NODE_ID];
@@ -1131,7 +1188,7 @@ class MindMap {
             const oppositeChildren = rootNode.childrenIds.filter(id => {
                 const childIsOnLeft = this.nodes[id].position.x < rootNode.position.x;
                 return wasOnLeft ? !childIsOnLeft : childIsOnLeft;
-            });
+            }).filter(id => !this.nodes[id].isCollapsed);
 
             if (oppositeChildren.length > 0) {
                 oppositeChildren.sort((a, b) => this.nodes[a].position.y - this.nodes[b].position.y);
@@ -1141,7 +1198,6 @@ class MindMap {
             }
         }
         
-        // Default behavior: go to first child
         if (!node.isCollapsed && node.childrenIds.length > 0) {
             const sortedChildren = [...node.childrenIds].sort((a,b) => this.nodes[a].position.y - this.nodes[b].position.y);
             this.selectNode(sortedChildren[0]);
@@ -1308,12 +1364,16 @@ class MindMap {
                     const allToTheRight = childPositionsX.every(x => x > node.position.x);
                     const allToTheLeft = childPositionsX.every(x => x < node.position.x);
                     Object.assign(collapseBtn.style, { left: '', right: '', top: '', bottom: '', transform: '' });
+                    
+                    const btnOffset = '-0.375rem';
+                    const btnSize = '0.75rem';
+
                     if (allToTheRight) {
-                        collapseBtn.style.right = '-0.375rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
+                         Object.assign(collapseBtn.style, { right: btnOffset, top: '50%', transform: 'translateY(-50%)' });
                     } else if (allToTheLeft) {
-                        collapseBtn.style.left = '-0.375rem'; collapseBtn.style.top = '50%'; collapseBtn.style.transform = 'translateY(-50%)';
+                        Object.assign(collapseBtn.style, { left: btnOffset, top: '50%', transform: 'translateY(-50%)' });
                     } else {
-                        collapseBtn.style.left = '50%'; collapseBtn.style.bottom = '-0.375rem'; collapseBtn.style.transform = 'translateX(-50%)';
+                        Object.assign(collapseBtn.style, { left: '50%', bottom: btnOffset, transform: 'translateX(-50%)' });
                     }
                 } else {
                     collapseBtn.style.display = 'none';
@@ -1397,6 +1457,9 @@ class MindMap {
     handleDragStart(e, nodeId) {
         if (e.button !== 0) return;
         
+        // Don't start a drag if the click is on an input field
+        if (e.target.tagName === 'INPUT') return;
+        
         this.dragStartState = this.getSerializableState();
         this.dragState = { isDraggingNode: true, hasDragged: false, nodeId: nodeId, lastMousePos: { x: e.clientX, y: e.clientY } };
     }
@@ -1421,10 +1484,13 @@ class MindMap {
             const dx = (e.clientX - this.dragState.lastMousePos.x) / this.scale;
             const dy = (e.clientY - this.dragState.lastMousePos.y) / this.scale;
             
-            // If the dragged node is not selected, select it and clear others (if not multi-selecting)
             const isCtrl = e.ctrlKey || e.metaKey;
-            if (!this.selectedNodeIds.includes(this.dragState.nodeId) && !isCtrl) {
-                this.selectNode(this.dragState.nodeId);
+            if (!this.selectedNodeIds.includes(this.dragState.nodeId)) {
+                if(!isCtrl) {
+                    this.selectNode(this.dragState.nodeId, false);
+                } else {
+                     this.selectNode(this.dragState.nodeId, true);
+                }
             }
             
             this.selectedNodeIds.forEach(id => {
@@ -1437,7 +1503,7 @@ class MindMap {
     
     handleMouseUp(e) {
         if (this.panState.isPanning) {
-            if (!this.panState.hasPanned) { // This was a click, not a pan.
+            if (!this.panState.hasPanned) {
                 this.clearSelection();
                 this.updateToolbarButtons();
             }
@@ -1445,10 +1511,10 @@ class MindMap {
             this.canvas.classList.remove('panning');
         }
         if (this.dragState.isDraggingNode) {
-            if (!this.dragState.hasDragged) { // This was a click, not a drag.
+            if (!this.dragState.hasDragged) {
                 this.navigationState = null;
                 this.selectNode(this.dragState.nodeId, e.ctrlKey || e.metaKey);
-            } else { // This was a drag.
+            } else {
                 if(this.dragStartState) {
                     const endState = JSON.stringify(this.getSerializableState().nodes);
                     const startState = JSON.stringify(this.dragStartState.nodes);
@@ -1491,8 +1557,6 @@ class MindMap {
 
     moveNodeAndChildren(rootNodeId, delta, selectionGroup = []) {
         const selectionSet = new Set(selectionGroup);
-        // We only move a node if its parent is NOT also in the selection group,
-        // unless it's the root node of the drag operation.
         if (selectionSet.has(this.nodes[rootNodeId]?.parentId) && this.dragState.nodeId !== rootNodeId) {
             return;
         }
