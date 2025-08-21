@@ -778,6 +778,44 @@ class MindMap {
         });
     }
 
+    renderMarkdown(text) {
+        if (!text) return '';
+
+        let html = text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+
+        // Links [text](url)
+        html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, linkText, url) => {
+            const sanitizedUrl = url.trim();
+            const invalidProtocols = /^(javascript|data):/i;
+            if (invalidProtocols.test(sanitizedUrl)) {
+                return match; // Don't render suspicious links
+            }
+            return `<a href="${sanitizedUrl}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+        });
+
+        // Inline code `code`
+        html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+        
+        // Bold and Italic (combined) ***text*** or ___text___
+        html = html.replace(/\*\*\*(.*?)\*\*\*|___(.*?)___/g, '<strong><em>$1$2</em></strong>');
+        
+        // Bold **text** or __text__
+        html = html.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
+
+        // Italic *text* or _text_
+        html = html.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
+
+        // Strikethrough ~~text~~
+        html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        
+        return html;
+    }
+
     updateMarkdownEditor() {
         if (!this.nodes[ROOT_NODE_ID]) return;
         const markdown = this.exportToMarkdown(true); // Exclude styles for editor
@@ -831,10 +869,14 @@ class MindMap {
 
         const textSpan = document.createElement('span');
         textSpan.className = 'node-text';
-        textSpan.textContent = text;
+        textSpan.innerHTML = this.renderMarkdown(text);
         nodeEl.appendChild(textSpan);
 
-        nodeEl.addEventListener('mousedown', (e) => { e.stopPropagation(); this.handleDragStart(e, nodeId); });
+        nodeEl.addEventListener('mousedown', (e) => { 
+            if (e.target.tagName === 'A') return;
+            e.stopPropagation(); 
+            this.handleDragStart(e, nodeId); 
+        });
         nodeEl.addEventListener('dblclick', (e) => { e.stopPropagation(); if (this.selectedNodeIds.length === 1) this.makeNodeEditable(nodeId); });
         
         const collapseBtn = document.createElement('button');
@@ -860,7 +902,7 @@ class MindMap {
                 if (nodeData.element) {
                     const textSpan = nodeData.element.querySelector('.node-text');
                     if (textSpan) {
-                        textSpan.textContent = trimmedText;
+                        textSpan.innerHTML = this.renderMarkdown(trimmedText);
                     }
                 }
             }

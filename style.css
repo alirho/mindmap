@@ -147,6 +147,33 @@ body {
 .mindmap-node .node-text {
     padding: 0 0.5rem;
     text-align: center;
+    word-break: break-word;
+}
+
+.mindmap-node .node-text a {
+    color: #1d4ed8;
+    text-decoration: underline;
+    text-decoration-color: #93c5fd;
+    transition: color 0.2s, text-decoration-color 0.2s;
+}
+
+.mindmap-node .node-text a:hover {
+    color: #1e40af;
+    text-decoration-color: #3b82f6;
+}
+
+.mindmap-node .node-text code {
+    background-color: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: monospace;
+}
+
+.mindmap-node .node-text del {
+    opacity: 0.7;
 }
 
 .mindmap-node .node-input {
