@@ -314,6 +314,40 @@ body {
     font-weight: 600;
 }
 
+#instructions-footer {
+    border-top: 1px solid var(--info-border);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+#instructions-footer .info-line {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+#instructions-footer a {
+    color: var(--info-text);
+    transition: color 0.2s;
+}
+
+#instructions-footer a:hover {
+    color: var(--text-color);
+}
+
+#instructions-footer svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+}
+
+
 #show-instructions-btn {
     position: absolute;
     bottom: 1rem;
