@@ -100,6 +100,7 @@ class MindMap {
         // Style Buttons
         this.nodeStyleButtons = document.querySelectorAll('.node-style-btn');
         this.connectorStyleButtons = document.querySelectorAll('.connector-style-btn');
+        this.layoutButtons = document.querySelectorAll('.layout-btn');
 
         // Instructions Panel
         this.instructionsPanel = document.getElementById('instructions');
@@ -128,6 +129,7 @@ class MindMap {
         this.currentMapId = null;
         this.db = new MindMapDB();
         this.connectorStyle = 'straight';
+        this.layoutMode = 'bidirectional';
 
         this.dragState = { isDraggingNode: false, hasDragged: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
         this.panState = { isPanning: false, hasPanned: false, lastMousePos: { x: 0, y: 0 } };
@@ -185,7 +187,8 @@ class MindMap {
         return { 
             nodes: serializableNodes, 
             selectedNodeIds: [...this.selectedNodeIds],
-            connectorStyle: this.connectorStyle 
+            connectorStyle: this.connectorStyle,
+            layoutMode: this.layoutMode
         };
     }
     
@@ -205,6 +208,7 @@ class MindMap {
         }
         this.nodes = newNodes;
         this.connectorStyle = state.connectorStyle || 'straight';
+        this.layoutMode = state.layoutMode || 'bidirectional';
 
         for (const id in this.nodes) {
             const nodeData = this.nodes[id];
@@ -227,6 +231,7 @@ class MindMap {
 
         this.updateMarkdownEditor();
         this.updateActiveConnectorStyleButton(this.connectorStyle);
+        this.updateActiveLayoutButton(this.layoutMode);
     }
 
     undo() {
@@ -282,7 +287,7 @@ class MindMap {
             this.moveNodeAndChildren(firstChildId, delta);
         };
     
-        if (parentNode.id === ROOT_NODE_ID) {
+        if (parentNode.id === ROOT_NODE_ID && this.layoutMode === 'bidirectional') {
             const childrenOnLeftIds = parentNode.childrenIds.filter(id => this.nodes[id].position.x < parentNode.position.x);
             const childrenOnRightIds = parentNode.childrenIds.filter(id => this.nodes[id].position.x > parentNode.position.x);
             
@@ -304,7 +309,11 @@ class MindMap {
     
         } else {
             const rootNode = this.nodes[ROOT_NODE_ID];
-            const direction = (parentNode.position.x < rootNode.position.x) ? -1 : 1;
+            let direction = -1; // Default to left for RTL layout
+            if (this.layoutMode === 'bidirectional') {
+                direction = (parentNode.position.x < rootNode.position.x) ? -1 : 1;
+            }
+            
             const childCount = parentNode.childrenIds.length;
             
             let offsetY;
@@ -407,7 +416,8 @@ class MindMap {
                 name: mapName,
                 markdown,
                 modifiedAt: new Date(),
-                connectorStyle: this.connectorStyle
+                connectorStyle: this.connectorStyle,
+                layoutMode: this.layoutMode
             };
             await this.db.put(mapData);
         } else {
@@ -418,7 +428,8 @@ class MindMap {
                 markdown,
                 createdAt: new Date(), // Set createdAt on creation
                 modifiedAt: new Date(),
-                connectorStyle: this.connectorStyle
+                connectorStyle: this.connectorStyle,
+                layoutMode: this.layoutMode
             };
             const newId = await this.db.add(mapData);
             this.currentMapId = newId;
@@ -441,7 +452,9 @@ class MindMap {
         this.importFromMarkdown(map.markdown);
         this.currentMapId = map.id;
         this.connectorStyle = map.connectorStyle || 'straight';
+        this.layoutMode = map.layoutMode || 'bidirectional';
         this.updateActiveConnectorStyleButton(this.connectorStyle);
+        this.updateActiveLayoutButton(this.layoutMode);
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
         this.selectNode(ROOT_NODE_ID);
@@ -545,7 +558,9 @@ class MindMap {
             this.clearCanvas();
             this.currentMapId = null;
             this.connectorStyle = 'straight';
+            this.layoutMode = 'bidirectional';
             this.updateActiveConnectorStyleButton(this.connectorStyle);
+            this.updateActiveLayoutButton(this.layoutMode);
 
             this.importFromMarkdown(content);
 
@@ -659,7 +674,9 @@ class MindMap {
         this.clearCanvas();
         this.currentMapId = null;
         this.connectorStyle = 'straight';
+        this.layoutMode = 'bidirectional';
         this.updateActiveConnectorStyleButton(this.connectorStyle);
+        this.updateActiveLayoutButton(this.layoutMode);
         this.createRootNode('موضوع اصلی');
         this.updateUIVisibilityAndConnectors();
         this.updateMarkdownEditor();
@@ -782,12 +799,14 @@ class MindMap {
             id: this.currentMapId,
             scale: this.scale,
             pan: this.pan,
-            connectorStyle: this.connectorStyle
+            connectorStyle: this.connectorStyle,
+            layoutMode: this.layoutMode
         };
 
         this.clearCanvas();
         this.currentMapId = preservedState.id;
         this.connectorStyle = preservedState.connectorStyle;
+        this.layoutMode = preservedState.layoutMode;
 
         this.importFromMarkdown(newMarkdown);
         
@@ -921,6 +940,7 @@ class MindMap {
         // Style buttons
         this.nodeStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setNodeStyle(btn.dataset.style)));
         this.connectorStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setConnectorStyle(btn.dataset.style)));
+        this.layoutButtons.forEach(btn => btn.addEventListener('click', () => this.setLayoutMode(btn.dataset.layout)));
 
 
         // Instructions Panel
@@ -1301,6 +1321,12 @@ class MindMap {
             btn.classList.toggle('active', btn.dataset.style === style);
         });
     }
+    
+    updateActiveLayoutButton(mode) {
+        this.layoutButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.layout === mode);
+        });
+    }
 
     setNodeStyle(style) {
         if (this.selectedNodeIds.length === 0) return;
@@ -1333,6 +1359,80 @@ class MindMap {
         
         this.pushHistoryState(stateBefore);
         this.triggerAutoSave();
+    }
+    
+    setLayoutMode(mode) {
+        if (this.layoutMode === mode) return;
+        const stateBefore = this.getSerializableState();
+
+        this.layoutMode = mode;
+        this.updateActiveLayoutButton(mode);
+        this.applyLayout();
+
+        this.pushHistoryState(stateBefore);
+        this.triggerAutoSave();
+    }
+    
+    _calculateLayoutPositions(parentId, parentX, parentY, forceDirection = null) {
+        let positions = { [parentId]: { x: parentX, y: parentY } };
+        const parent = this.nodes[parentId];
+        if (!parent || parent.isCollapsed || parent.childrenIds.length === 0) {
+            return positions;
+        }
+    
+        const HORIZONTAL_SPACING = 180;
+        const VERTICAL_SPACING = 80;
+    
+        const isBidirectionalRoot = (this.layoutMode === 'bidirectional' && parentId === ROOT_NODE_ID);
+    
+        if (isBidirectionalRoot) {
+            const children = [...parent.childrenIds];
+            const leftChildren = [], rightChildren = [];
+            children.forEach((id, i) => (i % 2 === 0 ? leftChildren.push(id) : rightChildren.push(id)));
+    
+            leftChildren.forEach((childId, i) => {
+                const yOffset = (i - (leftChildren.length - 1) / 2) * VERTICAL_SPACING;
+                const newX = parentX - HORIZONTAL_SPACING;
+                const newY = parentY + yOffset;
+                positions = { ...positions, ...this._calculateLayoutPositions(childId, newX, newY, -1) };
+            });
+    
+            rightChildren.forEach((childId, i) => {
+                const yOffset = (i - (rightChildren.length - 1) / 2) * VERTICAL_SPACING;
+                const newX = parentX + HORIZONTAL_SPACING;
+                const newY = parentY + yOffset;
+                positions = { ...positions, ...this._calculateLayoutPositions(childId, newX, newY, 1) };
+            });
+        } else {
+            let direction = forceDirection;
+            if (direction === null) {
+                if (this.layoutMode === 'rtl') {
+                    direction = -1;
+                } else { // Fallback for Bidirectional non-root when not called recursively from the root
+                    const root = this.nodes[ROOT_NODE_ID];
+                    direction = parent.position.x < root.position.x ? -1 : 1;
+                }
+            }
+    
+            parent.childrenIds.forEach((childId, i) => {
+                const yOffset = (i - (parent.childrenIds.length - 1) / 2) * VERTICAL_SPACING;
+                const newX = parentX + (direction * HORIZONTAL_SPACING);
+                const newY = parentY + yOffset;
+                positions = { ...positions, ...this._calculateLayoutPositions(childId, newX, newY, direction) };
+            });
+        }
+        return positions;
+    }
+    
+    applyLayout() {
+        if (!this.nodes[ROOT_NODE_ID]) return;
+        const rootPosition = { ...this.nodes[ROOT_NODE_ID].position };
+        const newPositions = this._calculateLayoutPositions(ROOT_NODE_ID, rootPosition.x, rootPosition.y);
+    
+        for (const id in newPositions) {
+            this.updateNodePosition(id, newPositions[id]);
+        }
+        this.updateUIVisibilityAndConnectors();
     }
     
     updateTransform() {
