@@ -1,7 +1,3 @@
-
-
-
-
 const ROOT_NODE_ID = 'root';
 const DB_NAME = 'MindMapDB';
 const STORE_NAME = 'mindmaps';
@@ -859,6 +855,9 @@ class MindMap {
         // Strikethrough ~~text~~
         html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
         
+        // Convert newlines to <br> tags for display
+        html = html.replace(/\n/g, '<br>');
+
         return html;
     }
 
@@ -947,14 +946,12 @@ class MindMap {
     _updateNodeText(nodeId, newText) {
         const nodeData = this.nodes[nodeId];
         if (nodeData) {
-            const trimmedText = newText.trim();
-            if (trimmedText) {
-                nodeData.text = trimmedText;
-                if (nodeData.element) {
-                    const textSpan = nodeData.element.querySelector('.node-text');
-                    if (textSpan) {
-                        textSpan.innerHTML = this.renderMarkdown(trimmedText);
-                    }
+            // The newText is already validated and trimmed by the caller.
+            nodeData.text = newText;
+            if (nodeData.element) {
+                const textSpan = nodeData.element.querySelector('.node-text');
+                if (textSpan) {
+                    textSpan.innerHTML = this.renderMarkdown(newText);
                 }
             }
         }
@@ -977,17 +974,29 @@ class MindMap {
         
         if (nodeEl.querySelector('.node-input')) return;
 
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'node-input';
-        input.value = nodeData.text;
+        const textarea = document.createElement('textarea');
+        textarea.className = 'node-input';
+        textarea.value = nodeData.text;
+        textarea.spellcheck = false;
+        textarea.rows = 1;
 
+        const autoSizeTextarea = () => {
+            // We set the width first, as it can affect the height calculation (due to wrapping).
+            textarea.style.width = 'auto';
+            // A small buffer (e.g., 2px) is added to prevent the last character from wrapping unexpectedly.
+            textarea.style.width = `${textarea.scrollWidth + 2}px`;
+        
+            // Then, we set the height.
+            textarea.style.height = 'auto'; // Reset height to shrink if needed
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        };
+        
         const saveChanges = () => {
             const oldText = nodeData.text;
-            const newText = input.value.trim() || oldText;
+            const newText = textarea.value.trim() || oldText;
             
-            if (nodeEl.contains(input)) {
-                nodeEl.replaceChild(textSpan, input);
+            if (nodeEl.contains(textarea)) {
+                nodeEl.replaceChild(textSpan, textarea);
             }
             
             if (newText !== oldText) {
@@ -996,19 +1005,23 @@ class MindMap {
             }
         };
         
-        input.addEventListener('blur', saveChanges);
-        input.addEventListener('keydown', (e) => {
+        textarea.addEventListener('blur', saveChanges);
+        textarea.addEventListener('keydown', (e) => {
             e.stopPropagation();
-            if (e.key === 'Enter') {
-                e.preventDefault(); input.blur();
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); 
+                textarea.blur();
             } else if (e.key === 'Escape') {
-                input.value = nodeData.text; input.blur();
+                textarea.value = nodeData.text; 
+                textarea.blur();
             }
         });
+        textarea.addEventListener('input', autoSizeTextarea);
         
-        nodeEl.replaceChild(input, textSpan);
-        input.focus();
-        input.select();
+        nodeEl.replaceChild(textarea, textSpan);
+        textarea.focus();
+        textarea.select();
+        autoSizeTextarea(); // Set initial size
     }
     
     // --- Event Listeners and Handlers ---
@@ -1694,13 +1707,18 @@ class MindMap {
     handleDragStart(e, nodeId) {
         if (e.button !== 0) return;
         
-        if (e.target.tagName === 'INPUT') return;
+        if (e.target.tagName === 'TEXTAREA') return;
         
         this.dragStartState = this.getSerializableState();
         this.dragState = { isDraggingNode: true, hasDragged: false, nodeId: nodeId, lastMousePos: { x: e.clientX, y: e.clientY } };
     }
 
     handlePanStart(e) {
+        const activeEditor = this.nodesLayer.querySelector('.node-input');
+        if (activeEditor) {
+            activeEditor.blur();
+        }
+
         if (e.target.closest('.mindmap-node') || e.target.closest('#markdown-editor') || e.button !== 0) return;
         this.hideEmojiPicker();
         e.preventDefault();

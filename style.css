@@ -177,7 +177,6 @@ body {
 }
 
 .mindmap-node .node-input {
-    width: 100%;
     background: transparent;
     border: none;
     text-align: center;
@@ -186,6 +185,10 @@ body {
     color: inherit;
     outline: none;
     padding: 0 0.5rem;
+    box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
+    line-height: inherit;
 }
 
 .collapse-btn {
