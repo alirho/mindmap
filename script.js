@@ -1,5 +1,6 @@
 
 
+
 const ROOT_NODE_ID = 'root';
 const DB_NAME = 'MindMapDB';
 const STORE_NAME = 'mindmaps';
@@ -97,6 +98,11 @@ class MindMap {
         this.panelToggleBtn = document.getElementById('panel-toggle-btn');
         this.savedMapsList = document.getElementById('saved-maps-list');
         
+        // Emoji picker elements
+        this.emojiBtn = document.getElementById('emoji-btn');
+        this.emojiPickerContainer = document.getElementById('emoji-picker-container');
+        this.emojiPicker = this.emojiPickerContainer.querySelector('emoji-picker');
+
         // Style Buttons
         this.nodeStyleButtons = document.querySelectorAll('.node-style-btn');
         this.connectorStyleButtons = document.querySelectorAll('.connector-style-btn');
@@ -972,6 +978,7 @@ class MindMap {
         // Toolbar buttons
         this.addNodeBtn.addEventListener('click', () => this.addNodeForSelected());
         this.deleteNodeBtn.addEventListener('click', () => this.deleteSelectedNodes());
+        this.emojiBtn.addEventListener('click', () => this.toggleEmojiPicker());
         this.newMapBtn.addEventListener('click', () => this.createNewMap());
         this.saveMapBtn.addEventListener('click', () => this.saveCurrentMap());
         this.uploadMapBtn.addEventListener('click', () => this.uploadInput.click());
@@ -998,13 +1005,17 @@ class MindMap {
         this.markdownEditor.addEventListener('input', () => this.updateMapFromMarkdownDebounced());
         this.markdownEditor.addEventListener('keydown', this.handleEditorKeyDown.bind(this));
         
-        // Close open menus when clicking elsewhere
+        // Close open menus/pickers when clicking elsewhere
         document.addEventListener('click', (e) => {
             const openMenu = document.querySelector('.map-item-menu.open');
             if (openMenu && !openMenu.parentElement.contains(e.target)) {
                  openMenu.classList.remove('open');
             }
+            if (this.emojiPickerContainer.style.display === 'block' && !this.emojiPickerContainer.contains(e.target) && e.target !== this.emojiBtn && !this.emojiBtn.contains(e.target)) {
+                this.hideEmojiPicker();
+            }
         });
+        this.emojiPicker.addEventListener('emoji-click', event => this.insertEmoji(event.detail.unicode));
     }
 
     handleEditorKeyDown(e) {
@@ -1204,6 +1215,7 @@ class MindMap {
     }
     
     selectNode(nodeId, multiSelect = false) {
+        this.hideEmojiPicker();
         if (nodeId && this.isAnyAncestorCollapsed(nodeId)) return;
 
         const previouslySelected = new Set(this.selectedNodeIds);
@@ -1315,11 +1327,16 @@ class MindMap {
     updateToolbarButtons() {
         const selectionCount = this.selectedNodeIds.length;
         const hasSelection = selectionCount > 0;
+        const isSingleNodeSelected = selectionCount === 1;
         const rootIsSelected = this.selectedNodeIds.includes(ROOT_NODE_ID);
     
         this.addNodeBtn.disabled = !hasSelection;
         this.deleteNodeBtn.disabled = !hasSelection;
         this.nodeStyleButtons.forEach(btn => btn.disabled = !hasSelection);
+        
+        // Emoji Button Logic
+        this.emojiBtn.disabled = !isSingleNodeSelected;
+        this.emojiBtn.title = isSingleNodeSelected ? 'افزودن شکلک به گره' : 'برای افزودن شکلک، باید یک گره انتخاب شود';
     
         if (!hasSelection) {
             this.addNodeBtn.title = 'برای افزودن شاخه، یک گره را انتخاب کنید';
@@ -1626,6 +1643,7 @@ class MindMap {
 
     handlePanStart(e) {
         if (e.target.closest('.mindmap-node') || e.target.closest('#markdown-editor') || e.button !== 0) return;
+        this.hideEmojiPicker();
         e.preventDefault();
         this.panState = { isPanning: true, hasPanned: false, lastMousePos: { x: e.clientX, y: e.clientY } };
         this.canvas.classList.add('panning');
@@ -1666,6 +1684,7 @@ class MindMap {
             if (!this.panState.hasPanned) {
                 this.clearSelection();
                 this.updateToolbarButtons();
+                this.hideEmojiPicker();
             }
             this.panState.isPanning = false; 
             this.canvas.classList.remove('panning');
@@ -1824,6 +1843,68 @@ class MindMap {
         });
     }
 
+    // --- Emoji Picker ---
+
+    toggleEmojiPicker() {
+        if (this.emojiPickerContainer.style.display === 'block') {
+            this.hideEmojiPicker();
+            return;
+        }
+    
+        const nodeId = this.getActiveNodeId();
+        if (!nodeId || this.selectedNodeIds.length !== 1) return;
+    
+        const emojiBtnRect = this.emojiBtn.getBoundingClientRect();
+    
+        this.emojiPickerContainer.style.display = 'block';
+        
+        // Use a timeout to allow the picker to render and get its correct dimensions
+        setTimeout(() => {
+            const pickerRect = this.emojiPickerContainer.getBoundingClientRect();
+            
+            let top = emojiBtnRect.bottom + 8; // Position below the button with a margin
+            let left = emojiBtnRect.left;
+    
+            // Adjust if out of viewport
+            if (left < 10) {
+                left = 10;
+            }
+            if (left + pickerRect.width > window.innerWidth - 10) {
+                left = window.innerWidth - pickerRect.width - 10;
+            }
+            if (top + pickerRect.height > window.innerHeight - 10) {
+                // If it goes off the bottom, place it above the button
+                top = emojiBtnRect.top - pickerRect.height - 8;
+            }
+            
+            this.emojiPickerContainer.style.top = `${top}px`;
+            this.emojiPickerContainer.style.left = `${left}px`;
+        }, 0);
+    }
+
+    hideEmojiPicker() {
+        this.emojiPickerContainer.style.display = 'none';
+    }
+
+    insertEmoji(emoji) {
+        const nodeId = this.getActiveNodeId();
+        if (!nodeId || this.selectedNodeIds.length !== 1) return;
+
+        const stateBefore = this.getSerializableState();
+        const node = this.nodes[nodeId];
+        const newText = node.text + emoji;
+        
+        this._updateNodeText(nodeId, newText);
+        
+        this.pushHistoryState(stateBefore);
+        this.updateMarkdownEditor();
+        if (nodeId === ROOT_NODE_ID) {
+           this.renderSavedMapsList();
+        }
+        this.triggerAutoSave();
+        
+        this.hideEmojiPicker();
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

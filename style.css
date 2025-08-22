@@ -751,3 +751,20 @@ body {
 .modal-btn.default:hover {
     background-color: #f1f5f9;
 }
+
+/* Emoji Picker */
+#emoji-picker-container {
+    position: fixed; /* Use fixed positioning to be relative to viewport */
+    z-index: 30;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--info-border);
+}
+
+emoji-picker {
+    --indicator-color: var(--button-bg);
+    --border-color: var(--info-border);
+    --font-size: 0.9rem;
+    --input-font-size: 1rem;
+}
