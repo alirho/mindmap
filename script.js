@@ -1,6 +1,7 @@
 
 
 
+
 const ROOT_NODE_ID = 'root';
 const DB_NAME = 'MindMapDB';
 const STORE_NAME = 'mindmaps';
@@ -102,6 +103,12 @@ class MindMap {
         this.emojiBtn = document.getElementById('emoji-btn');
         this.emojiPickerContainer = document.getElementById('emoji-picker-container');
         this.emojiPicker = this.emojiPickerContainer.querySelector('emoji-picker');
+        
+        // Color picker elements
+        this.colorBtn = document.getElementById('color-btn');
+        this.colorOptionsPopup = document.getElementById('color-options-popup');
+        this.colorInput = document.getElementById('color-input');
+        this.colorOptionButtons = document.querySelectorAll('#color-options-popup button');
 
         // Style Buttons
         this.nodeStyleButtons = document.querySelectorAll('.node-style-btn');
@@ -136,6 +143,7 @@ class MindMap {
         this.db = new MindMapDB();
         this.connectorStyle = 'straight';
         this.layoutMode = 'bidirectional';
+        this.currentColorTarget = null;
 
         this.dragState = { isDraggingNode: false, hasDragged: false, nodeId: null, lastMousePos: { x: 0, y: 0 } };
         this.panState = { isPanning: false, hasPanned: false, lastMousePos: { x: 0, y: 0 } };
@@ -188,6 +196,8 @@ class MindMap {
                 position: { ...node.position },
                 isCollapsed: node.isCollapsed,
                 style: node.style || 'rect',
+                colors: node.colors ? { ...node.colors } : {},
+                connectorColor: node.connectorColor,
             };
         }
         return { 
@@ -218,7 +228,7 @@ class MindMap {
 
         for (const id in this.nodes) {
             const nodeData = this.nodes[id];
-            const nodeEl = this.renderNodeDOM(nodeData.id, nodeData.text, nodeData.position, nodeData.style);
+            const nodeEl = this.renderNodeDOM(nodeData.id, nodeData.text, nodeData.position, nodeData.style, nodeData.colors);
             nodeData.element = nodeEl;
         }
 
@@ -266,10 +276,10 @@ class MindMap {
 
     // --- Core Node Management ---
 
-    createNode(text, parentId, position, style = 'rect') {
+    createNode(text, parentId, position, style = 'rect', colors = {}, connectorColor = null) {
         const id = parentId === null ? ROOT_NODE_ID : `node_${Date.now()}_${Math.random()}`;
-        this.nodes[id] = { id, text, parentId, childrenIds: [], position, element: null, isCollapsed: false, style };
-        const nodeEl = this.renderNodeDOM(id, text, position, style);
+        this.nodes[id] = { id, text, parentId, childrenIds: [], position, element: null, isCollapsed: false, style, colors, connectorColor };
+        const nodeEl = this.renderNodeDOM(id, text, position, style, colors);
         this.nodes[id].element = nodeEl;
         if (parentId && this.nodes[parentId]) {
             this.nodes[parentId].childrenIds.push(id);
@@ -277,7 +287,7 @@ class MindMap {
         return id;
     }
 
-    programmaticAddNode(parentId, text, style = 'rect') {
+    programmaticAddNode(parentId, text, style = 'rect', colors = {}, connectorColor = null) {
         if (!parentId || !this.nodes[parentId]) return null;
         const parentNode = this.nodes[parentId];
         
@@ -333,7 +343,7 @@ class MindMap {
             }
             newPosition = { x: parentNode.position.x + (direction * offsetX), y: parentNode.position.y + offsetY };
         }
-        return this.createNode(text, parentId, newPosition, style);
+        return this.createNode(text, parentId, newPosition, style, colors, connectorColor);
     }
     
     addNodeForSelected() {
@@ -600,32 +610,46 @@ class MindMap {
     }
 
     exportToMarkdown(excludeStyles = false) {
-        const buildMarkdownRecursive = (nodeId, depth, exclude) => {
+        const buildMarkdownRecursive = (nodeId, depth) => {
             const node = this.nodes[nodeId];
             if (!node) return '';
             const indent = '  '.repeat(depth);
-            let textPart = `- ${node.text}`;
-            if (!exclude && node.style && node.style !== 'rect') {
-                textPart += ` {style:${node.style}}`;
+    
+            let attributes = [];
+            if (node.style && node.style !== 'rect') {
+                attributes.push(`style:${node.style}`);
             }
+            if (node.colors) {
+                if (node.colors.background) attributes.push(`bg:${node.colors.background}`);
+                if (node.colors.border) attributes.push(`border:${node.colors.border}`);
+            }
+            if (node.connectorColor) {
+                attributes.push(`conn:${node.connectorColor}`);
+            }
+    
+            let textPart = `- ${node.text}`;
+            if (!excludeStyles && attributes.length > 0) {
+                textPart += ` {${attributes.join(';')}}`;
+            }
+    
             let result = `${indent}${textPart}\n`;
             if (!node.isCollapsed) {
                 node.childrenIds.forEach(childId => {
-                    result += buildMarkdownRecursive(childId, depth + 1, exclude);
+                    result += buildMarkdownRecursive(childId, depth + 1);
                 });
             }
             return result;
         };
-        return buildMarkdownRecursive(ROOT_NODE_ID, 0, excludeStyles);
+        return buildMarkdownRecursive(ROOT_NODE_ID, 0);
     }
     
     exportToMarkdownFromData(markdown, newRootText) {
         const lines = markdown.split('\n');
         const firstLine = lines[0];
-        const styleMatch = firstLine.match(/ {style:(\w+)}$/);
+        const styleMatch = firstLine.match(/ \{.*\}/);
         let newFirstLine = `- ${newRootText}`;
         if(styleMatch){
-            newFirstLine += ` ${styleMatch[0]}`;
+            newFirstLine += styleMatch[0];
         }
         lines[0] = newFirstLine;
         return lines.join('\n');
@@ -646,17 +670,33 @@ class MindMap {
             const level = indent.length / 2;
             
             const lineContent = line.trim().substring(2);
-            const styleMatch = lineContent.match(/ {style:(\w+)}$/);
+            const attrMatch = lineContent.match(/ \{(.*)\}$/);
             let text = lineContent;
             let style = 'rect';
-            if (styleMatch) {
-                text = lineContent.substring(0, styleMatch.index).trim();
-                style = styleMatch[1];
+            let colors = {};
+            let connectorColor = null;
+
+            if (attrMatch) {
+                text = lineContent.substring(0, attrMatch.index).trim();
+                attrMatch[1].split(';').forEach(attr => {
+                    const [key, value] = attr.split(':');
+                    if (key && value) {
+                        switch(key) {
+                            case 'style': style = value; break;
+                            case 'bg': colors.background = value; break;
+                            case 'border': colors.border = value; break;
+                            case 'conn': connectorColor = value; break;
+                        }
+                    }
+                });
             }
+
 
             if (level === 0) {
                 const rootId = this.createRootNode(text);
                 this.nodes[rootId].style = style;
+                this.nodes[rootId].colors = colors;
+                this.nodes[rootId].connectorColor = connectorColor;
                 parentStack.push(rootId);
                 levelStack.push(level);
             } else {
@@ -665,7 +705,7 @@ class MindMap {
                     levelStack.pop();
                 }
                 const parentId = parentStack[parentStack.length - 1];
-                const newNodeId = this.programmaticAddNode(parentId, text, style);
+                const newNodeId = this.programmaticAddNode(parentId, text, style, colors, connectorColor);
                 if(newNodeId) {
                     parentStack.push(newNodeId);
                     levelStack.push(level);
@@ -752,7 +792,7 @@ class MindMap {
             
             menuToggle.addEventListener('click', (e) => {
                 e.stopPropagation();
-                document.querySelectorAll('.map-item-menu.open').forEach(openMenu => {
+                document.querySelectorAll('.map-item-menu.open, .color-options-popup.open').forEach(openMenu => {
                     if (openMenu !== menu) openMenu.classList.remove('open');
                 });
                 menu.classList.toggle('open');
@@ -824,7 +864,7 @@ class MindMap {
 
     updateMarkdownEditor() {
         if (!this.nodes[ROOT_NODE_ID]) return;
-        const markdown = this.exportToMarkdown(true); // Exclude styles for editor
+        const markdown = this.exportToMarkdown(false);
         if (this.markdownEditor.value !== markdown) {
             this.markdownEditor.value = markdown;
         }
@@ -832,7 +872,7 @@ class MindMap {
     
     updateMapFromMarkdown() {
         const newMarkdown = this.markdownEditor.value;
-        const currentMarkdownForEditor = this.exportToMarkdown(true);
+        const currentMarkdownForEditor = this.exportToMarkdown(false);
         if (newMarkdown === currentMarkdownForEditor) {
             return;
         }
@@ -865,13 +905,18 @@ class MindMap {
         this.triggerAutoSave();
     }
 
-    renderNodeDOM(nodeId, text, position, style = 'rect') {
+    renderNodeDOM(nodeId, text, position, style = 'rect', colors = {}) {
         const nodeEl = document.createElement('div');
         nodeEl.id = `node-${nodeId}`;
         nodeEl.className = 'mindmap-node';
         nodeEl.classList.add(`node-style-${style}`);
         nodeEl.style.left = `${position.x}px`;
         nodeEl.style.top = `${position.y}px`;
+
+        if (colors) {
+            if (colors.background) nodeEl.style.backgroundColor = colors.background;
+            if (colors.border) nodeEl.style.borderColor = colors.border;
+        }
 
         const textSpan = document.createElement('span');
         textSpan.className = 'node-text';
@@ -986,10 +1031,19 @@ class MindMap {
         this.undoBtn.addEventListener('click', () => this.undo());
         this.redoBtn.addEventListener('click', () => this.redo());
 
-        // Style buttons
+        // Style and color buttons
         this.nodeStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setNodeStyle(btn.dataset.style)));
         this.connectorStyleButtons.forEach(btn => btn.addEventListener('click', () => this.setConnectorStyle(btn.dataset.style)));
         this.layoutButtons.forEach(btn => btn.addEventListener('click', () => this.setLayoutMode(btn.dataset.layout)));
+        this.colorBtn.addEventListener('click', (e) => { e.stopPropagation(); this.toggleColorPopup(); });
+        this.colorOptionButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.currentColorTarget = btn.dataset.target;
+                this.colorInput.click();
+                this.toggleColorPopup(false);
+            });
+        });
+        this.colorInput.addEventListener('input', (e) => this.applyColor(e.target.value));
 
 
         // Instructions Panel
@@ -1007,10 +1061,11 @@ class MindMap {
         
         // Close open menus/pickers when clicking elsewhere
         document.addEventListener('click', (e) => {
-            const openMenu = document.querySelector('.map-item-menu.open');
-            if (openMenu && !openMenu.parentElement.contains(e.target)) {
-                 openMenu.classList.remove('open');
-            }
+            document.querySelectorAll('.map-item-menu.open, .color-options-popup.open').forEach(menu => {
+                if (!menu.parentElement.contains(e.target)) {
+                    menu.classList.remove('open');
+                }
+            });
             if (this.emojiPickerContainer.style.display === 'block' && !this.emojiPickerContainer.contains(e.target) && e.target !== this.emojiBtn && !this.emojiBtn.contains(e.target)) {
                 this.hideEmojiPicker();
             }
@@ -1333,6 +1388,7 @@ class MindMap {
         this.addNodeBtn.disabled = !hasSelection;
         this.deleteNodeBtn.disabled = !hasSelection;
         this.nodeStyleButtons.forEach(btn => btn.disabled = !hasSelection);
+        this.colorBtn.disabled = !hasSelection;
         
         // Emoji Button Logic
         this.emojiBtn.disabled = !isSingleNodeSelected;
@@ -1629,6 +1685,9 @@ class MindMap {
                 break;
         }
         connectorEl.setAttribute('class', 'connector-line');
+        if (childNode.connectorColor) {
+            connectorEl.setAttribute('stroke', childNode.connectorColor);
+        }
         this.svgLayer.appendChild(connectorEl);
     }
     
@@ -1904,6 +1963,46 @@ class MindMap {
         this.triggerAutoSave();
         
         this.hideEmojiPicker();
+    }
+    
+    // --- Color Picker ---
+
+    toggleColorPopup(forceState) {
+        const shouldOpen = forceState !== undefined ? forceState : !this.colorOptionsPopup.classList.contains('open');
+        this.colorOptionsPopup.classList.toggle('open', shouldOpen);
+    }
+    
+    applyColor(color) {
+        if (!this.currentColorTarget || this.selectedNodeIds.length === 0) return;
+        
+        const stateBefore = this.getSerializableState();
+
+        this.selectedNodeIds.forEach(id => {
+            const node = this.nodes[id];
+            if (!node) return;
+
+            switch (this.currentColorTarget) {
+                case 'node-background':
+                    if (!node.colors) node.colors = {};
+                    node.colors.background = color;
+                    node.element.style.backgroundColor = color;
+                    break;
+                case 'node-border':
+                    if (!node.colors) node.colors = {};
+                    node.colors.border = color;
+                    node.element.style.borderColor = color;
+                    break;
+                case 'connector-line':
+                    node.connectorColor = color;
+                    break;
+            }
+        });
+        
+        this.updateUIVisibilityAndConnectors();
+        this.pushHistoryState(stateBefore);
+        this.triggerAutoSave();
+        this.updateMarkdownEditor();
+        this.currentColorTarget = null;
     }
 }
 
